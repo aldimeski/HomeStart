@@ -86,7 +86,12 @@ also shows the message if the frame has not loaded within 15 seconds.
   restart; a live (non-retained) message brings them back.
 - **Switch names**: `relay_names` (JSON list by relay position) overrides the device's FriendlyName per relay;
   an empty entry falls back to it. The device itself is not changed.
-- **Consoles**: a browser opens `/ws/tasmota/console/{id}` per console (the page allows at most 4). The first
+- **Switch locks**: `locked_relays` (JSON list of channel numbers) is set by administrators
+  (`PUT /api/tasmota/devices/{id}/lock`). `set_power` refuses a locked channel with 423 for every role, and
+  the console refuses `Power<n>` / `Power0` commands with a payload (also inside `Backlog`) for locked
+  channels; a bare `Power<n>` only reads the state and is allowed. Physical buttons and other MQTT clients
+  are outside HomeStart's control.
+- **Consoles**: a browser opens `/ws/tasmota/console/{id}` per console (the page allows at most 4, shown in a right-hand column on wide screens). The first
   viewer of a device starts a poller that reads `/cs?c2=<index>` every second with HTTP Basic auth; the index
   returned by Tasmota makes each read incremental (same format from 7.x to 15.x). The last 300 lines are kept
   so a new viewer sees recent history; the poller stops when the last viewer leaves. If HTTP is not possible

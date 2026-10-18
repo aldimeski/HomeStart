@@ -97,6 +97,8 @@ export interface TasmotaChannel {
   custom_label: string | null
   device_label: string | null
   state: 'ON' | 'OFF' | null
+  /** Locked by an administrator: nobody can switch it until it is unlocked. */
+  locked: boolean
 }
 
 export interface SensorReading {

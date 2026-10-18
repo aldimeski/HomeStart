@@ -105,7 +105,7 @@ def test_lwt_discovers_device_and_old_firmware_status_is_merged(manager):
     assert device["firmware"] == "8.1.0(tasmota)"
     assert device["web_url"] == "http://192.0.2.58"
     assert device["channels"] == [
-        {"channel": 1, "label": "Sonoff grejanje", "custom_label": None, "device_label": "Sonoff grejanje", "state": "OFF"}
+        {"channel": 1, "label": "Sonoff grejanje", "custom_label": None, "device_label": "Sonoff grejanje", "state": "OFF", "locked": False}
     ]
     assert device["wifi"] == {"rssi": 74, "signal": -63}
     assert {row["name"] for row in device["sensors"]} == {"Temperature", "Humidity"}
@@ -268,6 +268,9 @@ class FakeMqtt:
         self.reply = reply
         self.published = []
 
+    async def stop(self):
+        pass
+
     async def publish(self, topic, payload=""):
         self.published.append((topic, payload))
         _, device_topic, command = topic.split("/")
@@ -415,3 +418,60 @@ def test_console_websocket_rejects_unknown_device(client):
         with client.websocket_connect("/ws/tasmota/console/999") as ws:
             ws.receive_json()
     assert closed.value.code == 4404
+
+
+# --- switch locks ------------------------------------------------------------------
+
+
+def test_locked_switch_cannot_be_switched_until_an_admin_unlocks_it(client):
+    manager = client.app.state.tasmota
+    manager.mqtt = FakeMqtt(manager)
+    manager.handle_message("tele/bath/LWT", b"Online", False)
+    manager.handle_message("stat/bath/RESULT", b'{"POWER1":"OFF","POWER2":"OFF"}', False)
+    device_id = client.get("/api/tasmota/devices").json()["devices"][0]["id"]
+
+    channels = client.put(f"/api/tasmota/devices/{device_id}/lock", json={"channel": 2, "locked": True}, headers=CSRF).json()["channels"]
+    assert [c["locked"] for c in channels] == [False, True]
+
+    # Not even an administrator can switch it while it is locked.
+    response = client.post(f"/api/tasmota/devices/{device_id}/power", json={"channel": 2, "action": "on"}, headers=CSRF)
+    assert response.status_code == 423
+    assert client.post(f"/api/tasmota/devices/{device_id}/power", json={"channel": 1, "action": "on"}, headers=CSRF).status_code == 200
+
+    client.post("/api/users", json={"username": "ana", "password": "pass1234"}, headers=CSRF)
+    client.post("/api/auth/logout", headers=CSRF)
+    client.post("/api/auth/login", json={"username": "ana", "password": "pass1234"}, headers=CSRF)
+    assert client.put(f"/api/tasmota/devices/{device_id}/lock", json={"channel": 2, "locked": False}, headers=CSRF).status_code == 403
+    assert client.post(f"/api/tasmota/devices/{device_id}/power", json={"channel": 2, "action": "on"}, headers=CSRF).status_code == 423
+
+    client.post("/api/auth/logout", headers=CSRF)
+    client.post("/api/auth/login", json={"username": "admin", "password": "admin"}, headers=CSRF)
+    client.put(f"/api/tasmota/devices/{device_id}/lock", json={"channel": 2, "locked": False}, headers=CSRF)
+    assert client.post(f"/api/tasmota/devices/{device_id}/power", json={"channel": 2, "action": "on"}, headers=CSRF).status_code == 200
+
+
+def test_locks_survive_restart(manager):
+    send(manager, "tele/lamp/LWT", "Online")
+    send(manager, "stat/lamp/RESULT", {"POWER": "ON"})
+    manager.set_lock(only_device(manager)["id"], 1, True, "admin")
+    restarted = TasmotaManager(manager.settings, manager.box)
+    restarted.load()
+    send(restarted, "stat/lamp/RESULT", {"POWER": "ON"})
+    assert restarted.snapshot()[0]["channels"][0]["locked"] is True
+
+
+async def test_console_power_commands_respect_locks(manager):
+    manager.mqtt = FakeMqtt(manager, reply=False)
+    send(manager, "tele/desk/LWT", "Online")
+    send(manager, "stat/desk/RESULT", {"POWER1": "OFF", "POWER2": "OFF"})
+    device_id = only_device(manager)["id"]
+    manager.set_lock(device_id, 2, True, "admin")
+    console, queue = manager.open_console(device_id)
+
+    for command in ["Power2 ON", "power0 off", "Backlog Power1 ON; Power2 TOGGLE"]:
+        await console.command(command, "admin")
+    assert manager.mqtt.published == []
+    for command in ["Power2", "Power1 ON", "Backlog Power1 OFF; Status 0"]:
+        await console.command(command, "admin")
+    assert [topic for topic, _ in manager.mqtt.published] == ["cmnd/desk/Power2", "cmnd/desk/Power1", "cmnd/desk/Backlog"]
+    manager.close_console(console, queue)

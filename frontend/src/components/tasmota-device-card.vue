@@ -4,6 +4,8 @@ import {
   mdiChevronDown,
   mdiChevronUp,
   mdiConsoleLine,
+  mdiLock,
+  mdiLockOpenVariantOutline,
   mdiLockOutline,
   mdiOpenInNew,
   mdiPencilOutline,
@@ -20,6 +22,7 @@ const emit = defineEmits<{ edit: [device: TasmotaDevice]; console: [device: Tasm
 const SUMMARY_READINGS = ['Temperature', 'Humidity', 'Pressure', 'Illuminance', 'CO2']
 
 const busyChannel = ref<number | null>(null)
+const lockingChannel = ref<number | null>(null)
 const error = ref('')
 const showDetails = ref(false)
 let errorTimer: number | undefined
@@ -72,12 +75,33 @@ async function toggle(channel: TasmotaChannel) {
   try {
     await tasmota.setPower(props.device.id, channel.channel, channel.state === 'ON' ? 'off' : 'on')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Command failed'
-    window.clearTimeout(errorTimer)
-    errorTimer = window.setTimeout(() => (error.value = ''), 6000)
+    showError(e instanceof Error ? e.message : 'Command failed')
   } finally {
     busyChannel.value = null
   }
+}
+
+async function toggleLock(channel: TasmotaChannel) {
+  error.value = ''
+  lockingChannel.value = channel.channel
+  try {
+    await tasmota.setLock(props.device.id, channel.channel, !channel.locked)
+  } catch (e) {
+    showError(e instanceof Error ? e.message : 'Could not change the lock')
+  } finally {
+    lockingChannel.value = null
+  }
+}
+
+function showError(message: string) {
+  error.value = message
+  window.clearTimeout(errorTimer)
+  errorTimer = window.setTimeout(() => (error.value = ''), 6000)
+}
+
+/** For screen readers and tooltips: a lone unnamed relay is named after its device. */
+function accessibleName(channel: TasmotaChannel) {
+  return channel.label ?? (props.device.channels.length === 1 ? props.device.display_name : channelLabel(channel))
 }
 
 function channelLabel(channel: TasmotaChannel) {
@@ -119,11 +143,27 @@ function channelLabel(channel: TasmotaChannel) {
     <ul v-if="device.channels.length" class="flex flex-col gap-1.5">
       <li v-for="channel in device.channels" :key="channel.channel" class="flex items-center gap-2 text-sm">
         <span class="min-w-0 flex-1 truncate">{{ channelLabel(channel) }}</span>
+        <button
+          v-if="canEdit"
+          class="btn-icon h-7 w-7"
+          :class="channel.locked ? 'text-amber-600 dark:text-amber-400' : 'opacity-60 hover:opacity-100'"
+          :disabled="lockingChannel === channel.channel"
+          :aria-pressed="channel.locked"
+          :aria-label="`${channel.locked ? 'Unlock' : 'Lock'} ${accessibleName(channel)}`"
+          :title="channel.locked ? 'Locked: nobody can switch it. Click to unlock.' : 'Lock this switch so nobody can change it'"
+          @click="toggleLock(channel)"
+        >
+          <MdiIcon :path="channel.locked ? mdiLock : mdiLockOpenVariantOutline" :size="16" />
+        </button>
+        <span v-else-if="channel.locked" class="text-amber-600 dark:text-amber-400" title="Locked by an administrator">
+          <MdiIcon :path="mdiLock" :size="16" />
+          <span class="sr-only">Locked by an administrator</span>
+        </span>
         <ToggleSwitch
           :checked="channel.state === null ? null : channel.state === 'ON'"
-          :disabled="offline || channel.state === null"
+          :disabled="offline || channel.locked || channel.state === null"
           :busy="busyChannel === channel.channel"
-          :label="`Switch ${channel.label ?? device.display_name} ${channel.state === 'ON' ? 'off' : 'on'}`"
+          :label="`Switch ${accessibleName(channel)} ${channel.state === 'ON' ? 'off' : 'on'}`"
           @toggle="toggle(channel)"
         />
       </li>

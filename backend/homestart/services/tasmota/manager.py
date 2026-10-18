@@ -48,6 +48,9 @@ CREDENTIAL_USER_KEY = "tasmota_username"
 CREDENTIAL_PASSWORD_KEY = "tasmota_password"
 
 
+LOCKED_MESSAGE = "This switch is locked by an administrator"
+
+
 class DeviceError(Exception):
     """A problem the user should see, e.g. an offline or unreachable device."""
 
@@ -362,6 +365,7 @@ class TasmotaManager:
         live = self.live.get(device.id) or LiveState()
         names = json.loads(device.friendly_names) if device.friendly_names else []
         custom = json.loads(device.relay_names) if device.relay_names else []
+        locked = self.locked_channels(device)
         count = max(live.relay_count or 0, max(live.power, default=0))
         channels = []
         for channel in range(1, count + 1):
@@ -374,6 +378,7 @@ class TasmotaManager:
                     "custom_label": custom_label,
                     "device_label": device_label,
                     "state": live.power.get(channel),
+                    "locked": channel in locked,
                 }
             )
         web_url = None
@@ -468,8 +473,28 @@ class TasmotaManager:
     def uses_mqtt(self, device: TasmotaDevice) -> bool:
         return bool(device.mqtt_topic and self.mqtt_connected)
 
+    def locked_channels(self, device: TasmotaDevice) -> set[int]:
+        return set(json.loads(device.locked_relays)) if device.locked_relays else set()
+
+    def set_lock(self, device_id: int, channel: int, locked: bool, username: str) -> dict[str, Any]:
+        device = self.get(device_id)
+        channels = self.locked_channels(device)
+        if locked:
+            channels.add(channel)
+        else:
+            channels.discard(channel)
+        device.locked_relays = json.dumps(sorted(channels)) if channels else None
+        device = self._save(device)
+        log.info(
+            "Relay %d of %s %s by %s", channel, device.mqtt_topic or device.host, "locked" if locked else "unlocked", username
+        )
+        self._mark_dirty(device.id)
+        return self.view(device)
+
     async def set_power(self, device_id: int, channel: int, action: str) -> dict[str, Any]:
         device = self.get(device_id)
+        if channel in self.locked_channels(device):
+            raise DeviceError(LOCKED_MESSAGE, 423)
         live = self.live[device.id]
         if live.online is False:
             raise DeviceError("The device is offline", 409)

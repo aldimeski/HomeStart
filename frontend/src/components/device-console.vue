@@ -192,7 +192,7 @@ onBeforeUnmount(() => {
 
     <div
       ref="output"
-      class="console-output h-64 overflow-y-auto px-3 py-2 font-mono text-xs leading-5 break-all whitespace-pre-wrap"
+      class="console-output h-64 overflow-y-auto xl:h-auto xl:min-h-0 xl:flex-1 px-3 py-2 font-mono text-xs leading-5 break-all whitespace-pre-wrap"
       role="log"
       aria-live="off"
     >

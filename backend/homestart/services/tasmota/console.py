@@ -32,6 +32,7 @@ MAX_COMMAND_LENGTH = 255
 LISTENER_QUEUE_SIZE = 1000
 # The command word becomes part of the MQTT topic, so wildcards and separators must not get in.
 COMMAND_WORD = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+POWER_WORD = re.compile(r"^POWER(\d*)$", re.IGNORECASE)
 
 SOURCE_HTTP = "http"
 SOURCE_MQTT = "mqtt"
@@ -142,7 +143,24 @@ class DeviceConsole:
         text = payload.decode(errors="replace")
         self.add_lines("log", [f"{datetime.now():%H:%M:%S} MQT: {topic} = {text}"])
 
-    # --- commands --------------------------------------------------------------------
+    # --- commands ---
+
+    @staticmethod
+    def _switches_locked_relay(word: str, payload: str, locked: set[int]) -> bool:
+        """Power commands (also inside Backlog) must respect switch locks; a bare "Power1" only reads the state."""
+        if not locked:
+            return False
+        if word.upper() == "BACKLOG":
+            for part in payload.split(";"):
+                inner_word, _, inner_payload = part.strip().partition(" ")
+                if DeviceConsole._switches_locked_relay(inner_word, inner_payload, locked):
+                    return True
+            return False
+        match = POWER_WORD.match(word)
+        if not match or not payload.strip():
+            return False
+        channel = int(match.group(1) or 1)
+        return channel == 0 or channel in locked  # Power0 switches all relays-----------------------------------------------------------------
 
     async def command(self, text: str, username: str) -> None:
         text = text.strip()
@@ -156,11 +174,15 @@ class DeviceConsole:
             self.add_lines("error", [f"Not a Tasmota command: {word}"])
             return
 
-        from .manager import DeviceError  # manager imports this module
+        from .manager import LOCKED_MESSAGE, DeviceError  # manager imports this module
 
         device = self.manager.devices.get(self.device_id)
         if device is None or device.removed:
             self.add_lines("error", ["The device was removed."])
+            return
+        if self._switches_locked_relay(word, payload, self.manager.locked_channels(device)):
+            self.add_lines("command", [text])
+            self.add_lines("error", [f"{LOCKED_MESSAGE}; unlock it on the device card first."])
             return
 
         self.add_lines("command", [text])

@@ -132,52 +132,60 @@ onBeforeUnmount(() => {
       </template>
     </PageHeader>
 
-    <div class="flex-1 overflow-y-auto p-4 md:p-7">
-      <p v-if="!tasmota.state.mqttConnected" class="error-box mb-4" role="status">
-        The MQTT broker is not connected. Live updates and switching are paused; HomeStart keeps retrying.
-      </p>
-      <p v-else-if="tasmota.state.loaded && !tasmota.state.liveConnected" class="error-box mb-4" role="status">
-        Connection to HomeStart lost. Reconnecting…
-      </p>
-      <p v-if="error" class="error-box mb-4" role="alert">{{ error }}</p>
-      <p v-if="notice" class="mb-4 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent" role="status">{{ notice }}</p>
+    <!-- Wide screens: cards and consoles side by side, each scrolling on its own; narrow: consoles below. -->
+    <div class="min-h-0 flex-1 overflow-y-auto xl:flex xl:overflow-hidden">
+      <div class="p-4 md:p-7 xl:min-w-0 xl:flex-1 xl:overflow-y-auto">
+        <p v-if="!tasmota.state.mqttConnected" class="error-box mb-4" role="status">
+          The MQTT broker is not connected. Live updates and switching are paused; HomeStart keeps retrying.
+        </p>
+        <p v-else-if="tasmota.state.loaded && !tasmota.state.liveConnected" class="error-box mb-4" role="status">
+          Connection to HomeStart lost. Reconnecting…
+        </p>
+        <p v-if="error" class="error-box mb-4" role="alert">{{ error }}</p>
+        <p v-if="notice" class="mb-4 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent" role="status">{{ notice }}</p>
 
-      <p v-if="!tasmota.state.loaded" class="text-muted">Loading devices…</p>
-      <div v-else-if="!tasmota.state.devices.length" class="card p-6 text-center text-muted">
-        No Tasmota devices found yet. Devices appear automatically when they publish on MQTT.
+        <p v-if="!tasmota.state.loaded" class="text-muted">Loading devices…</p>
+        <div v-else-if="!tasmota.state.devices.length" class="card p-6 text-center text-muted">
+          No Tasmota devices found yet. Devices appear automatically when they publish on MQTT.
+        </div>
+
+        <section v-for="group in groups" :key="group.name" class="mb-6">
+          <h2 v-if="hasNamedGroups" class="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
+            {{ group.name || 'Other devices' }}
+          </h2>
+          <div class="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
+            <TasmotaDeviceCard
+              v-for="device in group.devices"
+              :key="device.id"
+              :device="device"
+              :can-edit="session.isAdmin.value"
+              :console-open="consoleIds.includes(device.id)"
+              @edit="editing = $event"
+              @console="toggleConsole"
+            />
+          </div>
+        </section>
       </div>
 
-      <section v-for="group in groups" :key="group.name" class="mb-6">
-        <h2 v-if="hasNamedGroups" class="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
-          {{ group.name || 'Other devices' }}
-        </h2>
-        <div class="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
-          <TasmotaDeviceCard
-            v-for="device in group.devices"
-            :key="device.id"
-            :device="device"
-            :can-edit="session.isAdmin.value"
-            :console-open="consoleIds.includes(device.id)"
-            @edit="editing = $event"
-            @console="toggleConsole"
-          />
-        </div>
-      </section>
-
-      <section v-if="consoles.length" class="mb-6" aria-labelledby="consoles-heading">
+      <aside
+        v-if="consoles.length"
+        class="px-4 pb-6 md:px-7 xl:flex xl:w-[46%] xl:max-w-[56rem] xl:shrink-0 xl:flex-col xl:border-l xl:border-line xl:p-4"
+        aria-labelledby="consoles-heading"
+      >
         <h2 id="consoles-heading" class="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
           Consoles · {{ consoles.length }} of {{ MAX_CONSOLES }}
         </h2>
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-4 xl:min-h-0 xl:flex-1 xl:gap-3 xl:overflow-y-auto">
           <DeviceConsole
             v-for="device in consoles"
             :id="`console-${device.id}`"
             :key="device.id"
             :device="device"
+            class="xl:min-h-80 xl:flex-1"
             @close="closeConsole(device.id)"
           />
         </div>
-      </section>
+      </aside>
     </div>
 
     <p

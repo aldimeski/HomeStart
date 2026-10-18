@@ -60,6 +60,11 @@ class PowerRequest(BaseModel):
     action: Literal["on", "off", "toggle"]
 
 
+class LockRequest(BaseModel):
+    channel: int = Field(ge=1, le=32)
+    locked: bool
+
+
 class CredentialsUpdate(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     # None keeps the stored password, so the form does not need to show it.
@@ -126,6 +131,19 @@ async def set_power(
     try:
         return await manager.set_power(device_id, body.channel, body.action)
     except (DeviceError, MqttUnavailable) as exc:
+        _raise(exc)
+
+
+@router.put("/api/tasmota/devices/{device_id}/lock")
+def set_lock(
+    device_id: int,
+    body: LockRequest,
+    user: User = Depends(require_admin),
+    manager: TasmotaManager = Depends(get_manager),
+):
+    try:
+        return manager.set_lock(device_id, body.channel, body.locked, user.username)
+    except DeviceError as exc:
         _raise(exc)
 
 

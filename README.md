@@ -20,8 +20,11 @@ menu as "Coming soon".
   with live relay state, sensors (temperature, humidity, pressure, energy …), WiFi signal, uptime and
   firmware; switching of every relay with confirmation from the device; "Scan network" over HTTP as a
   fallback; manual adding, renaming, grouping and removing of devices and naming of every switch (administrator)
-- **TasmoSiz consoles**: the live log of up to 4 devices at once, one below the other, with pause, clear,
-  auto-scroll and close; administrators can send commands, users can only read
+- **Switch locks**: an administrator can lock any switch; nobody (administrators included) can switch it until
+  an administrator unlocks it; users see the lock but cannot change it
+- **TasmoSiz consoles**: the live log of up to 4 devices at once in a column to the right of the devices
+  (below them on narrow screens), one below the other, with pause, clear, auto-scroll and close;
+  administrators can send commands, users can only read
 
 ## Project layout
 
@@ -218,6 +221,9 @@ Also back up `/var/lib/homestart/icons/`, `/opt/homestart/homestart.ini` and `/e
   *Configuration → Devices*. The login is stored encrypted (AES-256-GCM) and is not needed for MQTT.
 - Switch names set in HomeStart are stored only in HomeStart; the device keeps its own FriendlyName, which is
   shown when the HomeStart name is empty.
+- **Switch locks** are enforced by the server for the switches in HomeStart and for `Power` commands in the
+  console (also inside `Backlog`). They cannot stop the device's own button, the Tasmota web page, openHAB or
+  other MQTT clients.
 - **Consoles** read the device's web log (`/cs`, the same source as the console in the Tasmota web page) once
   per second while the console is open; several viewers of one device share a single poller. Devices with web
   login enabled need the shared Tasmota login from *Configuration → Devices*; without it, or when the web

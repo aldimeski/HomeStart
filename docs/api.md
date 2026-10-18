@@ -32,7 +32,8 @@ the header `X-HomeStart: 1`.
 | GET | `/api/tasmota/devices/{id}/status` | user | One device with live state |
 | PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name, relay_names?}` – `relay_names` by relay position, empty = device name, omitted = unchanged |
 | DELETE | `/api/tasmota/devices/{id}` | admin | Remove device |
-| POST | `/api/tasmota/devices/{id}/power` | user | `{channel, action: on\|off\|toggle}` → device after confirmation |
+| POST | `/api/tasmota/devices/{id}/power` | user | `{channel, action: on\|off\|toggle}` → device after confirmation; 423 if the switch is locked |
+| PUT | `/api/tasmota/devices/{id}/lock` | admin | `{channel, locked}` – lock or unlock a switch |
 | POST | `/api/tasmota/refresh` | user | Ask all devices for current state (answers arrive over the WebSocket) |
 | POST | `/api/tasmota/scan` | admin | HTTP scan of the subnet → `{subnet, found, new, auth_required}` |
 | GET | `/api/tasmota/credentials` | admin | `{username, has_password}` (the password is never returned) |
@@ -43,4 +44,4 @@ the header `X-HomeStart: 1`.
 
 Errors are returned as `{"detail": "message"}` with the matching HTTP status
 (401 not logged in, 403 not allowed / missing CSRF header, 409 conflict or device offline, 422 invalid input,
-429 locked out, 503 MQTT not connected, 504 device did not respond).
+423 switch locked, 429 locked out, 503 MQTT not connected, 504 device did not respond).
