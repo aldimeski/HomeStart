@@ -73,3 +73,36 @@ class LoginAttempt(Base):
     ip: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, index=True)
+
+
+class TasmotaDevice(Base):
+    """A Tasmota device. Live state (power, sensors, WiFi) is kept in memory, not here."""
+
+    __tablename__ = "tasmota_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Name set by an administrator; when empty the MQTT topic is shown.
+    name: Mapped[str | None] = mapped_column(String(64))
+    mqtt_topic: Mapped[str | None] = mapped_column(String(128), unique=True)
+    host: Mapped[str | None] = mapped_column(String(253))
+    port: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    mac: Mapped[str | None] = mapped_column(String(17), index=True)
+    hostname: Mapped[str | None] = mapped_column(String(64))
+    friendly_names: Mapped[str | None] = mapped_column(Text)  # JSON list, one name per relay
+    firmware: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(64))
+    group_name: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(8), nullable=False, default="mqtt")  # mqtt | scan | manual
+    auth_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Removed devices stay as a marker so retained MQTT messages do not bring them back.
+    removed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

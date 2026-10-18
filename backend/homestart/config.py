@@ -1,6 +1,7 @@
 """Loads application settings from homestart.ini or homestart_default.ini."""
 
 import configparser
+import ipaddress
 import logging
 import os
 from dataclasses import dataclass
@@ -30,9 +31,20 @@ session_timeout_minutes = 480
 # Failed logins (per username and IP) before a temporary lockout.
 max_failed_logins = 5
 lockout_minutes = 15
+# Key for encrypting stored device credentials. Keep it outside the database folder on a server.
+key_file = data/homestart.key
 
 [storage]
 icons_dir = data/icons
+
+[mqtt]
+enabled = true
+host = localhost
+port = 1883
+
+[network]
+# Subnet for "Scan network" (TasmoSiz). Empty = the server's own /24 network.
+scan_subnet =
 """
 
 
@@ -52,6 +64,11 @@ class Settings:
     lockout_minutes: int
     icons_dir: Path
     frontend_dir: Path
+    key_file: Path
+    mqtt_enabled: bool
+    mqtt_host: str
+    mqtt_port: int
+    scan_subnet: ipaddress.IPv4Network | None
 
 
 def default_app_dir() -> Path:
@@ -84,9 +101,10 @@ def load_settings(app_dir: Path | None = None) -> Settings:
     if user_ini.exists():
         ini_file = user_ini
     else:
-        if not default_ini.exists():
+        # The default file belongs to the application and is refreshed when a new version changes it.
+        if not default_ini.exists() or default_ini.read_text(encoding="utf-8") != DEFAULT_INI_CONTENT:
             default_ini.write_text(DEFAULT_INI_CONTENT, encoding="utf-8")
-            log.info("Created %s", default_ini)
+            log.info("Wrote %s", default_ini)
         ini_file = default_ini
 
     parser = configparser.ConfigParser()
@@ -106,6 +124,22 @@ def load_settings(app_dir: Path | None = None) -> Settings:
     if port > 65535:
         raise ConfigError(f"{ini_file}: [server] port is out of range")
 
+    mqtt_port = _get_int(parser, "mqtt", "port", 1883, ini_file)
+    try:
+        mqtt_enabled = parser.getboolean("mqtt", "enabled", fallback=True)
+    except ValueError as exc:
+        raise ConfigError(f"{ini_file}: [mqtt] enabled must be true or false") from exc
+
+    subnet_value = parser.get("network", "scan_subnet", fallback="").strip()
+    scan_subnet = None
+    if subnet_value:
+        try:
+            scan_subnet = ipaddress.IPv4Network(subnet_value, strict=False)
+        except ValueError as exc:
+            raise ConfigError(f"{ini_file}: [network] scan_subnet is not a valid IPv4 network") from exc
+        if scan_subnet.num_addresses > 1024 or not scan_subnet.is_private:
+            raise ConfigError(f"{ini_file}: [network] scan_subnet must be a private network of at most /22")
+
     settings = Settings(
         app_dir=app_dir,
         ini_file=ini_file,
@@ -117,6 +151,11 @@ def load_settings(app_dir: Path | None = None) -> Settings:
         lockout_minutes=_get_int(parser, "security", "lockout_minutes", 15, ini_file),
         icons_dir=_resolve(app_dir, parser.get("storage", "icons_dir", fallback="data/icons")),
         frontend_dir=app_dir / "frontend" / "dist",
+        key_file=_resolve(app_dir, parser.get("security", "key_file", fallback="data/homestart.key")),
+        mqtt_enabled=mqtt_enabled,
+        mqtt_host=parser.get("mqtt", "host", fallback="localhost").strip(),
+        mqtt_port=mqtt_port,
+        scan_subnet=scan_subnet,
     )
     log.info("Loaded settings from %s", ini_file)
     log.info("Database file: %s", settings.db_file)

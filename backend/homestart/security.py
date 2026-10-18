@@ -138,7 +138,10 @@ def get_current_user(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> User:
-    token = current_session_token(request)
+    return user_for_token(db, settings, current_session_token(request))
+
+
+def user_for_token(db: Session, settings: Settings, token: str | None) -> User:
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 

@@ -11,6 +11,7 @@ const tabs = computed(() => [
     ? [
         { to: '/config/links', label: 'Links' },
         { to: '/config/users', label: 'Users' },
+        { to: '/config/devices', label: 'Devices' },
       ]
     : []),
   { to: '/config/account', label: 'My account' },

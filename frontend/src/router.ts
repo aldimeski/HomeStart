@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { mdiCarOutline, mdiFlashOutline } from '@mdi/js'
+import { mdiCarOutline } from '@mdi/js'
 import { session } from './stores/session'
 import AppLayout from './layouts/app-layout.vue'
 import LoginView from './views/login-view.vue'
@@ -17,7 +17,7 @@ export const router = createRouter({
       children: [
         { path: '', component: HomeView },
         { path: 'link/:id', component: LinkFrameView, props: true },
-        { path: 'tasmosiz', component: ComingSoonView, props: { title: 'TasmoSiz', icon: mdiFlashOutline } },
+        { path: 'tasmosiz', component: () => import('./views/tasmosiz-view.vue') },
         { path: 'skoda', component: ComingSoonView, props: { title: 'Škoda', icon: mdiCarOutline } },
         {
           path: 'config',
@@ -26,6 +26,7 @@ export const router = createRouter({
             { path: '', redirect: () => (session.isAdmin.value ? '/config/links' : '/config/account') },
             { path: 'links', component: () => import('./views/config/links-config.vue'), meta: { admin: true } },
             { path: 'users', component: () => import('./views/config/users-config.vue'), meta: { admin: true } },
+            { path: 'devices', component: () => import('./views/config/devices-config.vue'), meta: { admin: true } },
             { path: 'account', component: () => import('./views/config/my-account.vue') },
           ],
         },

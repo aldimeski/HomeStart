@@ -11,9 +11,18 @@ FastAPI backend (python -m homestart, port 8000)
    ├─ api/users.py   user management (admin), own password and settings
    ├─ api/links.py   ShoLink links, order, iframe embed check
    ├─ api/icons.py   uploaded icons (SVG sanitized)
+   ├─ api/tasmota.py TasmoSiz REST API and /ws/tasmota live updates
+   ├─ services/tasmota/
+   │    mqtt_link.py  permanent broker connection (aiomqtt), reconnects with back-off
+   │    parsing.py    Tasmota payloads → state updates (old split STATUSn and combined STATUS0)
+   │    manager.py    device registry, live state, power commands, scan, change notifications
+   │    http_api.py   Tasmota /cm HTTP interface, subnet scan
+   └─ services/secret_box.py  AES-256-GCM for stored credentials (key in a separate file)
    └─ static         frontend/dist (SPA fallback to index.html)
    ▼
 SQLite (WAL) – path from the ini file; schema managed by Alembic
+   ▲
+Mosquitto (localhost:1883) ◀──▶ Tasmota devices
 ```
 
 ## Sessions and CSRF
@@ -57,3 +66,23 @@ also shows the message if the frame has not loaded within 15 seconds.
 | `sessions` | token_hash, user_id, created_at, last_seen |
 | `links` | id, created_by, title, url, icon, open_in_new_tab, sort_order |
 | `login_attempts` | id, username, ip, success, created_at |
+| `tasmota_devices` | id, name, mqtt_topic (unique), host, port, mac, hostname, friendly_names, firmware, model, group_name, source, auth_required, removed, created_at, last_seen |
+| `app_settings` | key, value_enc (encrypted), updated_at – shared Tasmota login |
+
+## TasmoSiz
+
+- **Discovery**: the backend stays subscribed to `tele/+/LWT`, `tele/+/STATE`, `tele/+/SENSOR`, `stat/+/+`
+  and `tasmota/discovery/+/config|sensors`. A retained LWT creates the device; for each device found this way
+  `cmnd/<topic>/Status 0` is sent once (spaced 150 ms apart) to read IP, MAC, firmware, sensors and WiFi.
+  Group topics are not used because devices use different ones (`sonoffs` / `tasmotas`).
+- **Live state** (relays, sensors, WiFi, online) is kept in memory; only static data is stored. Changes are
+  pushed to browsers over the WebSocket `/ws/tasmota` (snapshot on connect, then `device`, `removed` and
+  `mqtt` messages). Updates are coalesced for 150 ms, because one Status 0 answer is many messages.
+- **Switching** publishes `cmnd/<topic>/POWER<n>` and waits up to 4 s for `stat/<topic>/RESULT` or
+  `stat/<topic>/POWER<n>`; the API returns an error if the device is offline or does not confirm.
+  Without MQTT the HTTP interface is used when the device address and login are known.
+- **Removed devices** are kept with `removed = 1`, so retained broker messages do not restore them after a
+  restart; a live (non-retained) message brings them back.
+- **WebSocket security**: the session cookie is checked and the `Origin` header must match the host.
+- **Address validation**: manually added devices must resolve to a private IPv4 address; the scan subnet
+  must be private and at most /22.

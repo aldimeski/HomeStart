@@ -3,8 +3,9 @@
 HomeStart is a local web portal that gives quick access to the applications and devices used every day
 (smart home, local servers, Tasmota devices, car). It runs on a Debian server in the local network.
 
-Current version: **0.1** — base application and the **ShoLink** module (phases 1 and 2 of the specification).
-The TasmoSiz and Škoda modules are shown in the menu as "Coming soon".
+Current version: **0.2** — base application, the **ShoLink** module and the **TasmoSiz** device overview
+(phases 1–3 of the specification). TasmoSiz consoles (phase 4) and the Škoda module are not implemented yet;
+Škoda is shown in the menu as "Coming soon".
 
 ## Features
 
@@ -15,6 +16,10 @@ The TasmoSiz and Škoda modules are shown in the menu as "Coming soon".
 - **ShoLink**: shared links opened inside the app (iframe) or optionally in a new tab, Material Design Icons
   (served locally), device icons (Tasmota, Sonoff, ESP32) or uploaded icons (SVG/PNG/WebP/ICO, up to 256 KB; SVG files are cleaned of scripts)
 - Clear message with an "Open in new tab" button when a page cannot be embedded
+- **TasmoSiz**: Tasmota devices are found automatically over MQTT (retained LWT and discovery messages),
+  with live relay state, sensors (temperature, humidity, pressure, energy …), WiFi signal, uptime and
+  firmware; switching of every relay with confirmation from the device; "Scan network" over HTTP as a
+  fallback; manual adding, renaming, grouping and removing of devices (administrator)
 
 ## Project layout
 
@@ -49,9 +54,18 @@ cp homestart_default.ini homestart.ini
 | `[server]` | `host`, `port` | `0.0.0.0`, `8000` | Listen address and port |
 | `[security]` | `session_timeout_minutes` | `480` | Logout after this much inactivity |
 | `[security]` | `max_failed_logins`, `lockout_minutes` | `5`, `15` | Login lockout |
+| `[security]` | `key_file` | `data/homestart.key` | Key for encrypting stored device credentials |
 | `[storage]` | `icons_dir` | `data/icons` | Uploaded link icons |
+| `[mqtt]` | `enabled`, `host`, `port` | `true`, `localhost`, `1883` | MQTT broker used by TasmoSiz |
+| `[network]` | `scan_subnet` | empty | Subnet for "Scan network"; empty = the server's own /24 |
 
 The database and its folder are created automatically. Schema changes are applied at start-up with Alembic.
+`homestart_default.ini` belongs to the application and is rewritten when a new version changes it; put your
+changes in `homestart.ini`.
+
+The encryption key file is created automatically when it is missing. Keep it outside the database folder on
+the server and back it up: without it, stored device credentials cannot be decrypted (they would have to be
+entered again).
 
 ## First login
 
@@ -116,7 +130,14 @@ The frontend is built once on a development machine; the server needs only Pytho
    sudo python3 -m venv /opt/homestart/venv
    sudo /opt/homestart/venv/bin/pip install -r /opt/homestart/backend/requirements.txt
    ```
-6. Create `/opt/homestart/homestart.ini` with permanent paths:
+6. Create the encryption key, readable only by the service:
+   ```sh
+   sudo install -d -m 750 -o root -g homestart /etc/homestart
+   head -c 32 /dev/urandom | base64 | sudo tee /etc/homestart/homestart.key > /dev/null
+   sudo chown root:homestart /etc/homestart/homestart.key
+   sudo chmod 640 /etc/homestart/homestart.key
+   ```
+7. Create `/opt/homestart/homestart.ini` with permanent paths:
    ```ini
    [database]
    file = /var/lib/homestart/homestart.db
@@ -129,19 +150,28 @@ The frontend is built once on a development machine; the server needs only Pytho
    session_timeout_minutes = 480
    max_failed_logins = 5
    lockout_minutes = 15
+   key_file = /etc/homestart/homestart.key
 
    [storage]
    icons_dir = /var/lib/homestart/icons
+
+   [mqtt]
+   enabled = true
+   host = localhost
+   port = 1883
+
+   [network]
+   scan_subnet = 192.168.1.0/24
    ```
    Make it readable for the service: `sudo chmod 644 /opt/homestart/homestart.ini`.
-7. Install and start the service:
+8. Install and start the service:
    ```sh
    sudo cp /opt/homestart/deploy/homestart.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now homestart
    sudo journalctl -u homestart -f        # shows which ini file and database were loaded
    ```
-8. Allow port 8000 only from the local network, e.g. with ufw:
+9. Allow port 8000 only from the local network, e.g. with ufw:
    ```sh
    sudo ufw allow from 192.168.1.0/24 to any port 8000 proto tcp
    ```
@@ -161,7 +191,7 @@ The database is a single file. A safe copy while the service is running:
 sqlite3 /var/lib/homestart/homestart.db ".backup '/var/backups/homestart-$(date +%F).db'"
 ```
 
-Also back up `/var/lib/homestart/icons/` and `/opt/homestart/homestart.ini`.
+Also back up `/var/lib/homestart/icons/`, `/opt/homestart/homestart.ini` and `/etc/homestart/homestart.key`.
 
 ## ShoLink notes
 
@@ -170,3 +200,18 @@ Also back up `/var/lib/homestart/icons/` and `/opt/homestart/homestart.ini`.
   HomeStart checks this and shows a message with an "Open in new tab" button. For such sites enable
   *Open in new tab* on the link.
 - Serve HomeStart over plain HTTP in the local network; an HTTPS page cannot embed HTTP pages.
+
+## TasmoSiz notes
+
+- Devices are discovered from the MQTT broker (Mosquitto on the same server, no authentication) using the
+  standard Tasmota topics `tele/<topic>/LWT|STATE|SENSOR` and `stat/<topic>/…`, plus the retained
+  `tasmota/discovery/…` messages of newer firmware. Old firmware (e.g. 8.1.0, which answers `Status 0` with
+  separate STATUS…STATUS11 messages) and new firmware (one STATUS0 message) are both supported.
+- At start-up HomeStart sends `cmnd/<topic>/STATE` to every known device so the current state appears
+  immediately; "Refresh" asks all devices again. Sensors update when the device publishes (TelePeriod).
+- A device that disappears stays in the list as offline. An administrator can remove it; a removed device
+  reappears only if it publishes on MQTT again.
+- "Scan network" checks every address of the subnet on port 80 with `/cm?cmnd=Status 0`. Devices with web
+  login enabled are marked "login required" unless the shared Tasmota login is entered under
+  *Configuration → Devices*. The login is stored encrypted (AES-256-GCM) and is not needed for MQTT.
+- The MQTT broker accepts anonymous clients, so allow port 1883 only from the local subnet in the firewall.

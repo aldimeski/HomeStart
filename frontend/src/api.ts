@@ -89,3 +89,47 @@ export interface EmbedCheck {
   embeddable: boolean | null
   reason: string | null
 }
+
+export interface TasmotaChannel {
+  channel: number
+  label: string | null
+  state: 'ON' | 'OFF' | null
+}
+
+export interface SensorReading {
+  sensor: string
+  name: string
+  value: number
+  unit: string
+}
+
+export interface TasmotaDevice {
+  id: number
+  name: string | null
+  display_name: string
+  friendly_name: string | null
+  topic: string | null
+  host: string | null
+  port: number
+  mac: string | null
+  hostname: string | null
+  firmware: string | null
+  model: string | null
+  group_name: string | null
+  source: 'mqtt' | 'scan' | 'manual'
+  auth_required: boolean
+  online: boolean | null
+  last_seen: string | null
+  channels: TasmotaChannel[]
+  sensors: SensorReading[]
+  wifi: { rssi?: number; signal?: number } | null
+  uptime: string | null
+  web_url: string | null
+}
+
+export interface ScanResult {
+  subnet: string
+  found: number
+  new: number
+  auth_required: number
+}

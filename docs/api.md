@@ -27,6 +27,19 @@ the header `X-HomeStart: 1`.
 | POST | `/api/icons` | admin | multipart `file` (SVG/PNG/WebP/ICO, ≤ 256 KB) → `{icon: "upload:…"}` |
 | GET | `/api/icons/{name}` | user | Icon file |
 | DELETE | `/api/icons/{name}` | admin | Delete an icon that no link uses |
+| GET | `/api/tasmota/devices` | user | `{mqtt_connected, devices: [...]}` with live state |
+| POST | `/api/tasmota/devices` | admin | `{host, port, name?, group_name?}` – manual add, tests the connection |
+| GET | `/api/tasmota/devices/{id}/status` | user | One device with live state |
+| PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name}` |
+| DELETE | `/api/tasmota/devices/{id}` | admin | Remove device |
+| POST | `/api/tasmota/devices/{id}/power` | user | `{channel, action: on\|off\|toggle}` → device after confirmation |
+| POST | `/api/tasmota/refresh` | user | Ask all devices for current state (answers arrive over the WebSocket) |
+| POST | `/api/tasmota/scan` | admin | HTTP scan of the subnet → `{subnet, found, new, auth_required}` |
+| GET | `/api/tasmota/credentials` | admin | `{username, has_password}` (the password is never returned) |
+| PUT | `/api/tasmota/credentials` | admin | `{username, password?}` – omitted password keeps the stored one |
+| DELETE | `/api/tasmota/credentials` | admin | Remove the shared Tasmota login |
+| WS | `/ws/tasmota` | user | Live device updates: `snapshot`, `device`, `removed`, `mqtt` messages |
 
 Errors are returned as `{"detail": "message"}` with the matching HTTP status
-(401 not logged in, 403 not allowed / missing CSRF header, 409 conflict, 422 invalid input, 429 locked out).
+(401 not logged in, 403 not allowed / missing CSRF header, 409 conflict or device offline, 422 invalid input,
+429 locked out, 503 MQTT not connected, 504 device did not respond).

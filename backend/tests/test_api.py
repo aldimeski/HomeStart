@@ -15,6 +15,7 @@ def app_dir(tmp_path):
 
 @pytest.fixture
 def client(app_dir):
+    (app_dir / "homestart.ini").write_text("[database]\nfile = data/test.db\n[mqtt]\nenabled = false\n")
     app = create_app(load_settings(app_dir))
     with TestClient(app) as test_client:
         yield test_client
