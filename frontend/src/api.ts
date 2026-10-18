@@ -1,0 +1,91 @@
+export class ApiError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+type UnauthorizedHandler = () => void
+let onUnauthorized: UnauthorizedHandler = () => {}
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler) {
+  onUnauthorized = handler
+}
+
+function errorMessage(body: unknown, status: number): string {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length) {
+    // FastAPI validation errors: show the first message without the "Value error," prefix.
+    const msg = String(detail[0]?.msg ?? 'Invalid input')
+    return msg.replace(/^Value error, /, '')
+  }
+  return `Request failed (${status})`
+}
+
+export async function api<T = unknown>(
+  method: string,
+  url: string,
+  body?: unknown,
+  options: { skipUnauthorizedHandler?: boolean } = {},
+): Promise<T> {
+  const headers: Record<string, string> = { 'X-HomeStart': '1' }
+  let payload: BodyInit | undefined
+  if (body instanceof FormData) {
+    payload = body
+  } else if (body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    payload = JSON.stringify(body)
+  }
+
+  const response = await fetch(url, { method, headers, body: payload, credentials: 'same-origin' })
+  if (response.status === 204) return undefined as T
+
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    if (response.status === 401 && !options.skipUnauthorizedHandler) onUnauthorized()
+    throw new ApiError(response.status, errorMessage(data, response.status))
+  }
+  return data as T
+}
+
+export interface User {
+  id: number
+  username: string
+  role: 'admin' | 'user'
+  is_active: boolean
+  created_at: string
+  last_login: string | null
+}
+
+export type Theme = 'system' | 'light' | 'dark'
+
+export interface UserSettings {
+  theme: Theme
+  sidebar_collapsed: boolean
+  sholink_expanded: boolean
+}
+
+export interface Me {
+  user: User
+  settings: UserSettings
+}
+
+export interface Link {
+  id: number
+  title: string
+  url: string
+  icon: string
+  open_in_new_tab: boolean
+  sort_order: number
+}
+
+export type LinkInput = Pick<Link, 'title' | 'url' | 'icon' | 'open_in_new_tab'>
+
+export interface EmbedCheck {
+  reachable: boolean
+  embeddable: boolean | null
+  reason: string | null
+}

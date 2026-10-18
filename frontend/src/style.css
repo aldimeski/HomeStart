@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --hs-page: #f3f4f6;
+  --hs-surface: #ffffff;
+  --hs-surface-2: #f9fafb;
+  --hs-line: #e5e7eb;
+  --hs-ink: #1f2937;
+  --hs-muted: #6b7280;
+  --hs-accent: #0f766e;
+  --hs-accent-hover: #115e59;
+  --hs-accent-soft: #e0f2ef;
+  --hs-on-accent: #ffffff;
+  --hs-danger: #dc2626;
+  --hs-danger-soft: #fef2f2;
+  color-scheme: light;
+}
+
+.dark {
+  --hs-page: #13171c;
+  --hs-surface: #1b2027;
+  --hs-surface-2: #222831;
+  --hs-line: #2d343e;
+  --hs-ink: #e5e7eb;
+  --hs-muted: #9ca3af;
+  --hs-accent: #2dd4bf;
+  --hs-accent-hover: #5eead4;
+  --hs-accent-soft: #1d3a37;
+  --hs-on-accent: #042f2e;
+  --hs-danger: #f87171;
+  --hs-danger-soft: #3a1f22;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-page: var(--hs-page);
+  --color-surface: var(--hs-surface);
+  --color-surface-2: var(--hs-surface-2);
+  --color-line: var(--hs-line);
+  --color-ink: var(--hs-ink);
+  --color-muted: var(--hs-muted);
+  --color-accent: var(--hs-accent);
+  --color-accent-hover: var(--hs-accent-hover);
+  --color-accent-soft: var(--hs-accent-soft);
+  --color-on-accent: var(--hs-on-accent);
+  --color-danger: var(--hs-danger);
+  --color-danger-soft: var(--hs-danger-soft);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  @apply bg-page text-ink font-sans antialiased;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-accent bg-accent text-on-accent hover:border-accent-hover hover:bg-accent-hover;
+  }
+  .btn-danger {
+    @apply border-danger text-danger hover:bg-danger-soft;
+  }
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-35;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/25 focus:outline-none;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-ink;
+  }
+  .card {
+    @apply rounded-xl border border-line bg-surface;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent;
+  }
+  .error-box {
+    @apply rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--hs-accent);
+  outline-offset: 2px;
+}

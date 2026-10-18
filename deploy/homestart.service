@@ -1,0 +1,24 @@
+[Unit]
+Description=HomeStart local web portal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homestart
+Group=homestart
+Environment=HOMESTART_HOME=/opt/homestart
+WorkingDirectory=/opt/homestart/backend
+ExecStart=/opt/homestart/venv/bin/python -m homestart
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the service can only write to its data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/homestart
+
+[Install]
+WantedBy=multi-user.target
