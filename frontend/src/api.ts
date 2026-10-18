@@ -92,7 +92,10 @@ export interface EmbedCheck {
 
 export interface TasmotaChannel {
   channel: number
+  /** Name set in HomeStart, otherwise the device's FriendlyName. */
   label: string | null
+  custom_label: string | null
+  device_label: string | null
   state: 'ON' | 'OFF' | null
 }
 
@@ -126,6 +129,14 @@ export interface TasmotaDevice {
   uptime: string | null
   web_url: string | null
 }
+
+export interface ConsoleLine {
+  id: number
+  kind: 'log' | 'command' | 'error'
+  text: string
+}
+
+export type ConsoleSource = 'http' | 'mqtt'
 
 export interface ScanResult {
   subnet: string

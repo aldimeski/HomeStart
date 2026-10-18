@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { mdiAccessPointNetwork, mdiPlus, mdiRefresh } from '@mdi/js'
 import { api, type ScanResult, type TasmotaDevice } from '../api'
 import { tasmota } from '../stores/tasmota'
@@ -8,6 +8,9 @@ import PageHeader from '../components/page-header.vue'
 import MdiIcon from '../components/mdi-icon.vue'
 import TasmotaDeviceCard from '../components/tasmota-device-card.vue'
 import DeviceDialog from '../components/device-dialog.vue'
+import DeviceConsole from '../components/device-console.vue'
+
+const MAX_CONSOLES = 4
 
 const refreshing = ref(false)
 const scanning = ref(false)
@@ -15,6 +18,42 @@ const notice = ref('')
 const error = ref('')
 const editing = ref<TasmotaDevice | null>(null)
 const adding = ref(false)
+const consoleIds = ref<number[]>([])
+const toast = ref('')
+let toastTimer: number | undefined
+
+const consoles = computed(() =>
+  consoleIds.value.flatMap((id) => tasmota.state.devices.filter((device) => device.id === id)),
+)
+
+// A device removed while its console is open takes the console with it.
+watch(
+  () => tasmota.state.devices.map((device) => device.id),
+  (ids) => (consoleIds.value = consoleIds.value.filter((id) => ids.includes(id))),
+)
+
+async function toggleConsole(device: TasmotaDevice) {
+  if (consoleIds.value.includes(device.id)) {
+    closeConsole(device.id)
+    return
+  }
+  if (consoleIds.value.length >= MAX_CONSOLES) {
+    // Shown at the bottom of the window: the button is far from the page's message area at the top.
+    toast.value = `At most ${MAX_CONSOLES} consoles can be open at the same time. Close one to open the console of ${device.display_name}.`
+    window.clearTimeout(toastTimer)
+    toastTimer = window.setTimeout(() => (toast.value = ''), 6000)
+    return
+  }
+  toast.value = ''
+  consoleIds.value.push(device.id)
+  await nextTick()
+  document.getElementById(`console-${device.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
+function closeConsole(id: number) {
+  consoleIds.value = consoleIds.value.filter((item) => item !== id)
+  toast.value = ''
+}
 
 const groups = computed(() => {
   const map = new Map<string, TasmotaDevice[]>()
@@ -61,7 +100,10 @@ onMounted(() => {
   tasmota.connect()
   refresh()
 })
-onBeforeUnmount(() => tasmota.disconnect())
+onBeforeUnmount(() => {
+  window.clearTimeout(toastTimer)
+  tasmota.disconnect()
+})
 </script>
 
 <template>
@@ -115,11 +157,36 @@ onBeforeUnmount(() => tasmota.disconnect())
             :key="device.id"
             :device="device"
             :can-edit="session.isAdmin.value"
+            :console-open="consoleIds.includes(device.id)"
             @edit="editing = $event"
+            @console="toggleConsole"
+          />
+        </div>
+      </section>
+
+      <section v-if="consoles.length" class="mb-6" aria-labelledby="consoles-heading">
+        <h2 id="consoles-heading" class="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
+          Consoles · {{ consoles.length }} of {{ MAX_CONSOLES }}
+        </h2>
+        <div class="flex flex-col gap-4">
+          <DeviceConsole
+            v-for="device in consoles"
+            :id="`console-${device.id}`"
+            :key="device.id"
+            :device="device"
+            @close="closeConsole(device.id)"
           />
         </div>
       </section>
     </div>
+
+    <p
+      v-if="toast"
+      class="fixed bottom-4 left-1/2 z-40 w-[min(32rem,calc(100%-2rem))] -translate-x-1/2 rounded-lg border border-line bg-surface px-4 py-3 text-sm shadow-lg"
+      role="status"
+    >
+      {{ toast }}
+    </p>
 
     <DeviceDialog v-if="editing" :device="editing" :groups="groupNames" @close="editing = null" />
     <DeviceDialog v-if="adding" :groups="groupNames" @close="adding = false" />

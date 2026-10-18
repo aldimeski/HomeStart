@@ -11,12 +11,13 @@ FastAPI backend (python -m homestart, port 8000)
    ├─ api/users.py   user management (admin), own password and settings
    ├─ api/links.py   ShoLink links, order, iframe embed check
    ├─ api/icons.py   uploaded icons (SVG sanitized)
-   ├─ api/tasmota.py TasmoSiz REST API and /ws/tasmota live updates
+   ├─ api/tasmota.py TasmoSiz REST API, /ws/tasmota live updates, /ws/tasmota/console/{id}
    ├─ services/tasmota/
    │    mqtt_link.py  permanent broker connection (aiomqtt), reconnects with back-off
    │    parsing.py    Tasmota payloads → state updates (old split STATUSn and combined STATUS0)
    │    manager.py    device registry, live state, power commands, scan, change notifications
-   │    http_api.py   Tasmota /cm HTTP interface, subnet scan
+   │    console.py    device consoles: web log polling (/cs), MQTT fallback, commands
+   │    http_api.py   Tasmota /cm and /cs HTTP interface, subnet scan
    └─ services/secret_box.py  AES-256-GCM for stored credentials (key in a separate file)
    └─ static         frontend/dist (SPA fallback to index.html)
    ▼
@@ -71,7 +72,7 @@ also shows the message if the frame has not loaded within 15 seconds.
 
 ## TasmoSiz
 
-- **Discovery**: the backend stays subscribed to `tele/+/LWT`, `tele/+/STATE`, `tele/+/SENSOR`, `stat/+/+`
+- **Discovery**: the backend stays subscribed to `tele/+/+` (LWT, STATE, SENSOR are used; the rest feeds consoles), `stat/+/+`
   and `tasmota/discovery/+/config|sensors`. A retained LWT creates the device; for each device found this way
   `cmnd/<topic>/Status 0` is sent once (spaced 150 ms apart) to read IP, MAC, firmware, sensors and WiFi.
   Group topics are not used because devices use different ones (`sonoffs` / `tasmotas`).
@@ -83,6 +84,16 @@ also shows the message if the frame has not loaded within 15 seconds.
   Without MQTT the HTTP interface is used when the device address and login are known.
 - **Removed devices** are kept with `removed = 1`, so retained broker messages do not restore them after a
   restart; a live (non-retained) message brings them back.
+- **Switch names**: `relay_names` (JSON list by relay position) overrides the device's FriendlyName per relay;
+  an empty entry falls back to it. The device itself is not changed.
+- **Consoles**: a browser opens `/ws/tasmota/console/{id}` per console (the page allows at most 4). The first
+  viewer of a device starts a poller that reads `/cs?c2=<index>` every second with HTTP Basic auth; the index
+  returned by Tasmota makes each read incremental (same format from 7.x to 15.x). The last 300 lines are kept
+  so a new viewer sees recent history; the poller stops when the last viewer leaves. If HTTP is not possible
+  (login missing or refused, device unreachable) the console shows live MQTT messages of that topic and retries
+  HTTP every 15 s. Messages: `hello` (history, source, `can_write`), `source`, `lines`, `reset`. Commands
+  (`{"type":"command","command":"…"}`) are accepted only from administrators; the command word must be
+  alphanumeric so it cannot alter the MQTT topic.
 - **WebSocket security**: the session cookie is checked and the `Origin` header must match the host.
 - **Address validation**: manually added devices must resolve to a private IPv4 address; the scan subnet
   must be private and at most /22.

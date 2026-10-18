@@ -96,7 +96,7 @@ def _apply_state(update: Update, data: dict[str, Any]) -> None:
         update.uptime = data["Uptime"]
 
 
-def _relay_names(names: list[Any]) -> list[str]:
+def clean_relay_names(names: list[Any]) -> list[str]:
     """Keeps positions (name N belongs to relay N); unused trailing entries are dropped."""
     cleaned = [str(name) if name else "" for name in names]
     while cleaned and not cleaned[-1]:
@@ -144,7 +144,7 @@ def parse_status(data: dict[str, Any]) -> Update:
     if isinstance(status, dict):
         names = status.get("FriendlyName")
         if isinstance(names, list):
-            update.friendly_names = _relay_names(names)
+            update.friendly_names = clean_relay_names(names)
         if isinstance(status.get("Topic"), str):
             update.topic = status["Topic"]
 
@@ -188,7 +188,7 @@ def parse_discovery_config(payload: bytes | str) -> Update:
         hostname=data.get("hn") if isinstance(data.get("hn"), str) else None,
         firmware=data.get("sw") if isinstance(data.get("sw"), str) else None,
         model=data.get("md") if isinstance(data.get("md"), str) else None,
-        friendly_names=_relay_names(names) if isinstance(names, list) else None,
+        friendly_names=clean_relay_names(names) if isinstance(names, list) else None,
         relay_count=sum(1 for r in relays if r) if isinstance(relays, list) else None,
     )
 
@@ -228,3 +228,15 @@ def sensor_readings(sensors: dict[str, Any] | None) -> list[dict[str, Any]]:
             unit = ENERGY_UNITS.get(name, "") if sensor == "ENERGY" else units.get(name, "")
             rows.append({"sensor": sensor, "name": name, "value": value, "unit": unit})
     return rows
+
+
+def parse_console(text: str) -> tuple[int, list[str]] | None:
+    """Answer of the web console endpoint /cs: "<index>}1<reset flag>}1<lines separated by \\n>}1".
+
+    The same format is used from 7.x to 15.x; the index is passed back to get only newer lines.
+    """
+    parts = text.split("}1", 2)
+    if len(parts) != 3 or not parts[0].isdigit():
+        return None
+    body = parts[2].removesuffix("}1")
+    return int(parts[0]), [line for line in body.split("\n") if line.strip()]

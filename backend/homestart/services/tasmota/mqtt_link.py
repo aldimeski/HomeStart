@@ -10,9 +10,8 @@ import aiomqtt
 log = logging.getLogger("homestart.mqtt")
 
 SUBSCRIPTIONS = (
-    "tele/+/LWT",
-    "tele/+/STATE",
-    "tele/+/SENSOR",
+    # All tele topics (not only LWT/STATE/SENSOR), so a console without HTTP access still shows INFO, RESULT …
+    "tele/+/+",
     "stat/+/+",
     "tasmota/discovery/+/config",
     "tasmota/discovery/+/sensors",

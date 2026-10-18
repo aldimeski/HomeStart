@@ -18,10 +18,12 @@ from ...db import SessionLocal
 from ...models import AppSetting, TasmotaDevice, utcnow
 from ..secret_box import SecretBox
 from . import http_api
+from .console import DeviceConsole
 from .http_api import AuthRequired, Credentials, DeviceUnreachable
 from .mqtt_link import MqttLink, MqttUnavailable
 from .parsing import (
     Update,
+    clean_relay_names,
     decode_json,
     normalize_mac,
     parse_discovery_config,
@@ -82,6 +84,7 @@ class TasmotaManager:
         self._queried_topics: set[str] = set()
         self._query_queue: asyncio.Queue[str] = asyncio.Queue()
         self._tasks: list[asyncio.Task] = []
+        self.consoles: dict[int, DeviceConsole] = {}
 
     # --- lifecycle ---------------------------------------------------------------
 
@@ -99,6 +102,8 @@ class TasmotaManager:
     async def stop(self) -> None:
         for task in self._tasks:
             task.cancel()
+        for console in self.consoles.values():
+            console.stop()
         if self.mqtt:
             await self.mqtt.stop()
 
@@ -113,7 +118,7 @@ class TasmotaManager:
             try:
                 for device in list(self.devices.values()):
                     if device.mqtt_topic and not device.removed:
-                        await self._publish(f"cmnd/{device.mqtt_topic}/STATE")
+                        await self.publish(f"cmnd/{device.mqtt_topic}/STATE")
             except MqttUnavailable as exc:
                 log.warning("Could not query device state: %s", exc)
 
@@ -121,12 +126,12 @@ class TasmotaManager:
         while True:
             topic = await self._query_queue.get()
             try:
-                await self._publish(f"cmnd/{topic}/Status", "0")
+                await self.publish(f"cmnd/{topic}/Status", "0")
             except MqttUnavailable:
                 self._queried_topics.discard(topic)
             await asyncio.sleep(STATUS_QUERY_SPACING_SECONDS)
 
-    async def _publish(self, topic: str, payload: str = "") -> None:
+    async def publish(self, topic: str, payload: str = "") -> None:
         if not self.mqtt:
             raise MqttUnavailable("MQTT is disabled")
         await self.mqtt.publish(topic, payload)
@@ -253,6 +258,10 @@ class TasmotaManager:
             return
         prefix, device_topic, suffix = parts
 
+        console = self.consoles.get(self.by_topic.get(device_topic, -1))
+        if console:
+            console.mqtt_message(topic, payload, retained)
+
         if prefix == "tele":
             if suffix == "LWT":
                 online = payload.decode(errors="replace").strip().lower() == "online"
@@ -352,15 +361,21 @@ class TasmotaManager:
     def view(self, device: TasmotaDevice) -> dict[str, Any]:
         live = self.live.get(device.id) or LiveState()
         names = json.loads(device.friendly_names) if device.friendly_names else []
+        custom = json.loads(device.relay_names) if device.relay_names else []
         count = max(live.relay_count or 0, max(live.power, default=0))
-        channels = [
-            {
-                "channel": channel,
-                "label": (names[channel - 1] or None) if count > 1 and channel <= len(names) else None,
-                "state": live.power.get(channel),
-            }
-            for channel in range(1, count + 1)
-        ]
+        channels = []
+        for channel in range(1, count + 1):
+            device_label = (names[channel - 1] or None) if channel <= len(names) else None
+            custom_label = (custom[channel - 1] or None) if channel <= len(custom) else None
+            channels.append(
+                {
+                    "channel": channel,
+                    "label": custom_label or device_label,
+                    "custom_label": custom_label,
+                    "device_label": device_label,
+                    "state": live.power.get(channel),
+                }
+            )
         web_url = None
         if device.host:
             web_url = f"http://{device.host}" + (f":{device.port}" if device.port != 80 else "")
@@ -401,6 +416,19 @@ class TasmotaManager:
             raise DeviceError("Device not found", 404)
         return device
 
+    # --- consoles -------------------------------------------------------------------
+
+    def open_console(self, device_id: int) -> tuple[DeviceConsole, asyncio.Queue]:
+        device = self.get(device_id)
+        console = self.consoles.get(device.id)
+        if console is None:
+            console = self.consoles[device.id] = DeviceConsole(self, device.id)
+        return console, console.attach()
+
+    def close_console(self, console: DeviceConsole, queue: asyncio.Queue) -> None:
+        if console.detach(queue) and self.consoles.get(console.device_id) is console:
+            del self.consoles[console.device_id]
+
     # --- credentials ----------------------------------------------------------------
 
     def credentials(self) -> Credentials | None:
@@ -437,7 +465,7 @@ class TasmotaManager:
 
     # --- actions -------------------------------------------------------------------
 
-    def _can_use_mqtt(self, device: TasmotaDevice) -> bool:
+    def uses_mqtt(self, device: TasmotaDevice) -> bool:
         return bool(device.mqtt_topic and self.mqtt_connected)
 
     async def set_power(self, device_id: int, channel: int, action: str) -> dict[str, Any]:
@@ -447,24 +475,24 @@ class TasmotaManager:
             raise DeviceError("The device is offline", 409)
         command = f"POWER{channel}"
 
-        if self._can_use_mqtt(device):
+        if self.uses_mqtt(device):
             topic = device.mqtt_topic
             future = asyncio.get_running_loop().create_future()
             waiters = self._power_waiters.setdefault(topic, [])
             waiters.append((channel, future))
             try:
-                await self._publish(f"cmnd/{topic}/{command}", action.upper())
+                await self.publish(f"cmnd/{topic}/{command}", action.upper())
                 await asyncio.wait_for(future, POWER_TIMEOUT_SECONDS)
             except TimeoutError:
                 raise DeviceError("The device did not confirm the command", 504) from None
             finally:
                 waiters.remove((channel, future))
         else:
-            data = await self._http(device, f"{command} {action.upper()}")
+            data = await self.http_command(device, f"{command} {action.upper()}")
             self._apply(device, parse_result(json.dumps(data)), online=True)
         return self.view(self.devices[device.id])
 
-    async def _http(self, device: TasmotaDevice, command: str) -> dict[str, Any]:
+    async def http_command(self, device: TasmotaDevice, command: str) -> dict[str, Any]:
         if not device.host:
             raise DeviceError("The device address is unknown and MQTT is not connected", 503)
         try:
@@ -479,15 +507,15 @@ class TasmotaManager:
         devices = [self.get(device_id)] if device_id is not None else self.visible_devices()
         http_devices = []
         for device in devices:
-            if self._can_use_mqtt(device):
-                await self._publish(f"cmnd/{device.mqtt_topic}/STATE")
-                await self._publish(f"cmnd/{device.mqtt_topic}/Status", "10")
+            if self.uses_mqtt(device):
+                await self.publish(f"cmnd/{device.mqtt_topic}/STATE")
+                await self.publish(f"cmnd/{device.mqtt_topic}/Status", "10")
             elif device.host and not device.auth_required:
                 http_devices.append(device)
 
         async def poll(device: TasmotaDevice) -> None:
             try:
-                self._apply(device, parse_status(await self._http(device, "Status 0")), online=True)
+                self._apply(device, parse_status(await self.http_command(device, "Status 0")), online=True)
             except DeviceError:
                 pass
 
@@ -562,10 +590,16 @@ class TasmotaManager:
         self._flush_dirty()
         return self.view(device)
 
-    def update_device(self, device_id: int, name: str | None, group_name: str | None) -> dict[str, Any]:
+    def update_device(
+        self, device_id: int, name: str | None, group_name: str | None, relay_names: list[str | None] | None = None
+    ) -> dict[str, Any]:
+        """relay_names None keeps the stored relay names; an empty entry falls back to the device's name."""
         device = self.get(device_id)
         device.name = name
         device.group_name = group_name
+        if relay_names is not None:
+            cleaned = clean_relay_names(relay_names)
+            device.relay_names = json.dumps(cleaned) if cleaned else None
         device = self._save(device)
         self._mark_dirty(device.id)
         return self.view(device)

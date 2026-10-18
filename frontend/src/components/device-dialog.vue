@@ -13,6 +13,7 @@ const form = reactive({
   group_name: props.device?.group_name ?? '',
   host: '',
   port: 80,
+  relay_names: props.device?.channels.map((channel) => channel.custom_label ?? '') ?? [],
 })
 const error = ref('')
 const saving = ref(false)
@@ -26,7 +27,9 @@ async function save() {
   const name = form.name.trim() || null
   const group_name = form.group_name.trim() || null
   try {
-    if (props.device) await tasmota.update(props.device.id, { name, group_name })
+    // Relays are only known from live state; with none known, the stored names are left untouched.
+    const relay_names = form.relay_names.length ? form.relay_names.map((value) => value.trim() || null) : undefined
+    if (props.device) await tasmota.update(props.device.id, { name, group_name, relay_names })
     else await tasmota.add({ name, group_name, host: form.host.trim(), port: form.port })
     emit('close')
   } catch (e) {
@@ -82,6 +85,22 @@ async function remove() {
           <option v-for="group in groups" :key="group" :value="group" />
         </datalist>
       </div>
+      <fieldset v-if="device?.channels.length" class="space-y-2">
+        <legend class="label">{{ device.channels.length === 1 ? 'Switch name' : 'Switch names' }}</legend>
+        <p class="text-xs text-muted">Shown on the card. Leave empty to use the name reported by the device.</p>
+        <div v-for="(channel, index) in device.channels" :key="channel.channel" class="flex items-center gap-3">
+          <label class="w-16 shrink-0 text-sm text-muted" :for="`relay-name-${channel.channel}`">
+            Relay {{ channel.channel }}
+          </label>
+          <input
+            :id="`relay-name-${channel.channel}`"
+            v-model="form.relay_names[index]"
+            class="input"
+            maxlength="64"
+            :placeholder="channel.device_label ?? (device.channels.length === 1 ? 'Power' : `Relay ${channel.channel}`)"
+          />
+        </div>
+      </fieldset>
       <p v-if="error" class="error-box" role="alert">{{ error }}</p>
 
       <div v-if="device" class="rounded-lg border border-line p-3 text-sm">

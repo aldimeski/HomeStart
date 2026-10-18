@@ -104,7 +104,9 @@ def test_lwt_discovers_device_and_old_firmware_status_is_merged(manager):
     assert device["host"] == "192.0.2.58"
     assert device["firmware"] == "8.1.0(tasmota)"
     assert device["web_url"] == "http://192.0.2.58"
-    assert device["channels"] == [{"channel": 1, "label": None, "state": "OFF"}]
+    assert device["channels"] == [
+        {"channel": 1, "label": "Sonoff grejanje", "custom_label": None, "device_label": "Sonoff grejanje", "state": "OFF"}
+    ]
     assert device["wifi"] == {"rssi": 74, "signal": -63}
     assert {row["name"] for row in device["sensors"]} == {"Temperature", "Humidity"}
 
@@ -294,3 +296,122 @@ async def test_power_command_times_out_without_answer(manager, monkeypatch):
     with pytest.raises(DeviceError) as error:
         await manager.set_power(only_device(manager)["id"], 1, "toggle")
     assert error.value.status_code == 504
+
+
+# --- relay names and consoles ------------------------------------------------------
+
+
+def test_relay_names_set_in_homestart_override_device_names(client):
+    manager = client.app.state.tasmota
+    manager.handle_message("tele/bath/LWT", b"Online", False)
+    manager.handle_message("stat/bath/STATUS0", json.dumps(STATUS0_COMBINED).encode(), False)
+    device_id = client.get("/api/tasmota/devices").json()["devices"][0]["id"]
+
+    body = {"name": None, "group_name": None, "relay_names": ["", " Mirror ", None]}
+    channels = client.put(f"/api/tasmota/devices/{device_id}", json=body, headers=CSRF).json()["channels"]
+    assert [c["label"] for c in channels] == ["Sonoff Bathroom", "Mirror", "Sonoff3"]
+    assert [c["custom_label"] for c in channels] == [None, "Mirror", None]
+
+    # Saving without relay_names (older clients) keeps them.
+    channels = client.put(f"/api/tasmota/devices/{device_id}", json={"name": "Bath"}, headers=CSRF).json()["channels"]
+    assert channels[1]["label"] == "Mirror"
+
+    too_long = {"relay_names": ["x" * 65]}
+    assert client.put(f"/api/tasmota/devices/{device_id}", json=too_long, headers=CSRF).status_code == 422
+
+
+def test_parse_console_answer():
+    from homestart.services.tasmota.parsing import parse_console
+
+    text = '178}10}103:13:11 MQT: tele/tv/STATE = {"POWER":"ON"}\n03:18:11 MQT: tele/tv/SENSOR = {}}1'
+    assert parse_console(text) == (178, ['03:13:11 MQT: tele/tv/STATE = {"POWER":"ON"}', "03:18:11 MQT: tele/tv/SENSOR = {}"])
+    assert parse_console("178}11}1}1") == (178, [])
+    assert parse_console("<html>Login</html>") is None
+
+
+async def test_console_reads_http_log_incrementally(manager, monkeypatch):
+    from homestart.services.tasmota import console as console_module
+
+    calls = []
+
+    async def fake_log(host, port, index, credentials, client):
+        calls.append(index)
+        return (index + 2, [f"line {index}", f"line {index + 1}"])
+
+    monkeypatch.setattr(console_module.http_api, "console_log", fake_log)
+    monkeypatch.setattr(console_module, "POLL_INTERVAL_SECONDS", 0.01)
+    send(manager, "tele/desk/LWT", "Online")
+    send(manager, "stat/desk/STATUS5", {"StatusNET": {"IPAddress": "192.0.2.10"}})
+
+    console, queue = manager.open_console(only_device(manager)["id"])
+    for _ in range(100):
+        if len(calls) >= 3:
+            break
+        await asyncio.sleep(0.01)
+    assert calls[:3] == [0, 2, 4]
+    assert console.source == "http"
+    # MQTT lines are not repeated: the device log already contains them.
+    send(manager, "stat/desk/RESULT", {"POWER": "ON"})
+    assert all("RESULT" not in line["text"] for line in console.history)
+
+    manager.close_console(console, queue)
+    assert manager.consoles == {}
+
+
+async def test_console_without_http_shows_mqtt_and_sends_commands(manager, monkeypatch):
+    from homestart.services.tasmota import console as console_module
+    from homestart.services.tasmota.http_api import AuthRequired
+
+    async def needs_login(*args):
+        raise AuthRequired("192.0.2.11")
+
+    monkeypatch.setattr(console_module.http_api, "console_log", needs_login)
+    manager.mqtt = FakeMqtt(manager, reply=False)
+    send(manager, "tele/lamp/LWT", "Online")
+    send(manager, "stat/lamp/STATUS5", {"StatusNET": {"IPAddress": "192.0.2.11"}})
+
+    console, queue = manager.open_console(only_device(manager)["id"])
+    await asyncio.sleep(0.01)
+    assert console.source == "mqtt" and "Configuration" in console.notice
+
+    send(manager, "tele/lamp/INFO1", {"Module": "Generic"})
+    send(manager, "tele/lamp/STATE", {"POWER": "OFF"}, retained=True)
+    await console.command("Status 0", "admin")
+    await console.command("Power/#", "admin")
+
+    texts = [line["text"] for line in console.history]
+    assert any("tele/lamp/INFO1" in text for text in texts)
+    assert not any("tele/lamp/STATE" in text for text in texts)
+    assert ("cmnd/lamp/Status", "0") in manager.mqtt.published
+    assert [line["kind"] for line in console.history][-2:] == ["command", "error"]
+    assert len(manager.mqtt.published) == 1  # the invalid command was not sent
+    manager.close_console(console, queue)
+
+
+def test_console_websocket_is_read_only_for_users(client):
+    client.app.state.tasmota.handle_message("tele/lamp/LWT", b"Online", False)
+    device_id = client.get("/api/tasmota/devices").json()["devices"][0]["id"]
+
+    with client.websocket_connect(f"/ws/tasmota/console/{device_id}") as ws:
+        hello = ws.receive_json()
+        assert hello["type"] == "hello" and hello["can_write"] is True
+
+    client.post("/api/users", json={"username": "ana", "password": "pass1234"}, headers=CSRF)
+    client.post("/api/auth/logout", headers=CSRF)
+    client.post("/api/auth/login", json={"username": "ana", "password": "pass1234"}, headers=CSRF)
+    with client.websocket_connect(f"/ws/tasmota/console/{device_id}") as ws:
+        assert ws.receive_json()["can_write"] is False
+        ws.send_text(json.dumps({"type": "command", "command": "Restart 1"}))
+        message = ws.receive_json()
+        while message["type"] != "lines":
+            message = ws.receive_json()
+        assert message["lines"][0]["kind"] == "error"
+
+
+def test_console_websocket_rejects_unknown_device(client):
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with client.websocket_connect("/ws/tasmota/console/999") as ws:
+            ws.receive_json()
+    assert closed.value.code == 4404

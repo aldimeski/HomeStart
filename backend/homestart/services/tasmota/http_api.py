@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from .parsing import decode_json
+from .parsing import decode_json, parse_console
 
 HTTP_TIMEOUT = 3.0
 SCAN_TIMEOUT = 2.0
@@ -48,7 +48,7 @@ async def command(
     params = {"cmnd": cmnd}
     if credentials:
         params = {"user": credentials.username, "password": credentials.password, **params}
-    url = f"http://{host}:{port}/cm" if port != 80 else f"http://{host}/cm"
+    url = _url(host, port, "/cm")
 
     try:
         if client is None:
@@ -65,6 +65,28 @@ async def command(
     if data is None:
         raise DeviceUnreachable(f"{host} did not answer like a Tasmota device")
     return data
+
+
+def _url(host: str, port: int, path: str) -> str:
+    return f"http://{host}:{port}{path}" if port != 80 else f"http://{host}{path}"
+
+
+async def console_log(
+    host: str, port: int, index: int, credentials: Credentials | None, client: httpx.AsyncClient
+) -> tuple[int, list[str]]:
+    """Web log lines after `index` (0 = everything the device still holds) and the new index."""
+    # /cs only accepts HTTP Basic auth, which also keeps the password out of the URL.
+    auth = (credentials.username, credentials.password) if credentials else None
+    try:
+        response = await client.get(_url(host, port, "/cs"), params={"c2": index}, auth=auth)
+    except httpx.HTTPError as exc:
+        raise DeviceUnreachable(str(host)) from exc
+    if response.status_code == 401:
+        raise AuthRequired(str(host))
+    parsed = parse_console(response.text) if response.status_code == 200 else None
+    if parsed is None:
+        raise DeviceUnreachable(f"{host} did not answer like a Tasmota console")
+    return parsed
 
 
 def default_scan_subnet() -> ipaddress.IPv4Network:

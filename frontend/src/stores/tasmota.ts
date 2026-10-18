@@ -97,7 +97,10 @@ export const tasmota = {
     upsert(await api<TasmotaDevice>('POST', `/api/tasmota/devices/${id}/power`, { channel, action }))
   },
 
-  async update(id: number, data: { name: string | null; group_name: string | null }) {
+  async update(
+    id: number,
+    data: { name: string | null; group_name: string | null; relay_names?: (string | null)[] },
+  ) {
     upsert(await api<TasmotaDevice>('PUT', `/api/tasmota/devices/${id}`, data))
   },
 

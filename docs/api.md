@@ -30,7 +30,7 @@ the header `X-HomeStart: 1`.
 | GET | `/api/tasmota/devices` | user | `{mqtt_connected, devices: [...]}` with live state |
 | POST | `/api/tasmota/devices` | admin | `{host, port, name?, group_name?}` – manual add, tests the connection |
 | GET | `/api/tasmota/devices/{id}/status` | user | One device with live state |
-| PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name}` |
+| PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name, relay_names?}` – `relay_names` by relay position, empty = device name, omitted = unchanged |
 | DELETE | `/api/tasmota/devices/{id}` | admin | Remove device |
 | POST | `/api/tasmota/devices/{id}/power` | user | `{channel, action: on\|off\|toggle}` → device after confirmation |
 | POST | `/api/tasmota/refresh` | user | Ask all devices for current state (answers arrive over the WebSocket) |
@@ -39,6 +39,7 @@ the header `X-HomeStart: 1`.
 | PUT | `/api/tasmota/credentials` | admin | `{username, password?}` – omitted password keeps the stored one |
 | DELETE | `/api/tasmota/credentials` | admin | Remove the shared Tasmota login |
 | WS | `/ws/tasmota` | user | Live device updates: `snapshot`, `device`, `removed`, `mqtt` messages |
+| WS | `/ws/tasmota/console/{id}` | user | Device console: `hello`, `source`, `lines`, `reset`; send `{"type":"command","command":"Status 0"}` (admin only) |
 
 Errors are returned as `{"detail": "message"}` with the matching HTTP status
 (401 not logged in, 403 not allowed / missing CSRF header, 409 conflict or device offline, 422 invalid input,

@@ -1,12 +1,14 @@
 import asyncio
-from typing import Literal
+import json
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field, field_validator
 
 from ..db import SessionLocal
-from ..models import User
+from ..models import ROLE_ADMIN, User
 from ..security import SESSION_COOKIE, get_current_user, require_admin, user_for_token
 from ..services.tasmota.manager import DeviceError, TasmotaManager
 from ..services.tasmota.mqtt_link import MqttUnavailable
@@ -37,8 +39,20 @@ class DeviceCreate(BaseModel):
 class DeviceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=64)
     group_name: str | None = Field(default=None, max_length=64)
+    # By relay position; an empty entry shows the device's own FriendlyName. Omitted keeps the stored names.
+    relay_names: list[str | None] | None = Field(default=None, max_length=32)
 
     _clean = field_validator("name", "group_name")(_optional_text)
+
+    @field_validator("relay_names")
+    @classmethod
+    def _clean_relay_names(cls, value: list[str | None] | None) -> list[str | None] | None:
+        if value is None:
+            return None
+        cleaned = [_optional_text(name) for name in value]
+        if any(name and len(name) > 64 for name in cleaned):
+            raise ValueError("Relay names are limited to 64 characters")
+        return cleaned
 
 
 class PowerRequest(BaseModel):
@@ -89,7 +103,7 @@ def update_device(
     manager: TasmotaManager = Depends(get_manager),
 ):
     try:
-        return manager.update_device(device_id, body.name, body.group_name)
+        return manager.update_device(device_id, body.name, body.group_name, body.relay_names)
     except DeviceError as exc:
         _raise(exc)
 
@@ -150,49 +164,109 @@ def clear_credentials(_: User = Depends(require_admin), manager: TasmotaManager 
     manager.set_credentials(None, None)
 
 
-@router.websocket("/ws/tasmota")
-async def device_updates(websocket: WebSocket):
+async def _authenticate(websocket: WebSocket) -> User | None:
+    """Closes the connection and returns None unless a logged-in user opened it from this site."""
     # Browsers send cookies on cross-site WebSocket handshakes, so the origin must be checked explicitly.
     origin = websocket.headers.get("origin")
     if origin and urlsplit(origin).netloc != websocket.headers.get("host"):
         await websocket.close(code=4403)
-        return
+        return None
     try:
         with SessionLocal() as db:
-            user_for_token(db, websocket.app.state.settings, websocket.cookies.get(SESSION_COOKIE))
+            return user_for_token(db, websocket.app.state.settings, websocket.cookies.get(SESSION_COOKIE))
     except HTTPException:
         await websocket.close(code=4401)
-        return
+        return None
 
+
+async def _relay(
+    websocket: WebSocket,
+    queue: asyncio.Queue,
+    on_message: Callable[[dict[str, Any]], Awaitable[None]],
+    on_text: Callable[[str], Awaitable[None]] | None = None,
+) -> None:
+    """Forwards queued server messages to the browser and browser messages to on_text, until it closes."""
+    receiver = asyncio.create_task(websocket.receive_text())
+    try:
+        while True:
+            getter = asyncio.create_task(queue.get())
+            done, _ = await asyncio.wait({getter, receiver}, return_when=asyncio.FIRST_COMPLETED)
+            if receiver in done:
+                getter.cancel()
+                text = receiver.result()  # raises WebSocketDisconnect when the browser closes the page
+                if on_text:
+                    await on_text(text)
+                receiver = asyncio.create_task(websocket.receive_text())
+                continue
+            await on_message(getter.result())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if not receiver.done():
+            receiver.cancel()
+
+
+@router.websocket("/ws/tasmota")
+async def device_updates(websocket: WebSocket):
+    if await _authenticate(websocket) is None:
+        return
     manager: TasmotaManager = websocket.app.state.tasmota
     await websocket.accept()
     queue = manager.subscribe()
-    receiver: asyncio.Task | None = None
 
     async def send_snapshot() -> None:
         await websocket.send_json(
             {"type": "snapshot", "mqtt_connected": manager.mqtt_connected, "devices": manager.snapshot()}
         )
 
+    async def forward(message: dict[str, Any]) -> None:
+        if message["type"] == "resync":
+            await send_snapshot()
+        else:
+            await websocket.send_json(message)
+
     try:
         await send_snapshot()
-        receiver = asyncio.create_task(websocket.receive_text())
-        while True:
-            getter = asyncio.create_task(queue.get())
-            done, _ = await asyncio.wait({getter, receiver}, return_when=asyncio.FIRST_COMPLETED)
-            if receiver in done:
-                getter.cancel()
-                receiver.result()  # raises WebSocketDisconnect when the browser closes the page
-                receiver = asyncio.create_task(websocket.receive_text())
-                continue
-            message = getter.result()
-            if message["type"] == "resync":
-                await send_snapshot()
-            else:
-                await websocket.send_json(message)
+        await _relay(websocket, queue, forward)
     except WebSocketDisconnect:
         pass
     finally:
         manager.unsubscribe(queue)
-        if receiver and not receiver.done():
-            receiver.cancel()
+
+
+@router.websocket("/ws/tasmota/console/{device_id}")
+async def device_console(websocket: WebSocket, device_id: int):
+    user = await _authenticate(websocket)
+    if user is None:
+        return
+    manager: TasmotaManager = websocket.app.state.tasmota
+    try:
+        console, queue = manager.open_console(device_id)
+    except DeviceError:
+        await websocket.close(code=4404)
+        return
+    # Everyone may read the log; only administrators may send commands (they can reset or reconfigure a device).
+    can_write = user.role == ROLE_ADMIN
+
+    async def on_text(text: str) -> None:
+        try:
+            message = json.loads(text)
+        except ValueError:
+            return
+        if not isinstance(message, dict) or message.get("type") != "command":
+            return
+        if not can_write:
+            await websocket.send_json(
+                {"type": "lines", "lines": [{"id": 0, "kind": "error", "text": "Only administrators can send commands."}]}
+            )
+            return
+        await console.command(str(message.get("command", "")), user.username)
+
+    try:
+        await websocket.accept()
+        await websocket.send_json({**console.status(), "type": "hello", "can_write": can_write, "lines": list(console.history)})
+        await _relay(websocket, queue, websocket.send_json, on_text)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.close_console(console, queue)

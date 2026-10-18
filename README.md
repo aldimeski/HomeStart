@@ -3,9 +3,9 @@
 HomeStart is a local web portal that gives quick access to the applications and devices used every day
 (smart home, local servers, Tasmota devices, car). It runs on a Debian server in the local network.
 
-Current version: **0.2** — base application, the **ShoLink** module and the **TasmoSiz** device overview
-(phases 1–3 of the specification). TasmoSiz consoles (phase 4) and the Škoda module are not implemented yet;
-Škoda is shown in the menu as "Coming soon".
+Current version: **0.3** — base application, the **ShoLink** module and **TasmoSiz** with device overview
+and consoles (phases 1–4 of the specification). The Škoda module is not implemented yet and is shown in the
+menu as "Coming soon".
 
 ## Features
 
@@ -19,7 +19,9 @@ Current version: **0.2** — base application, the **ShoLink** module and the **
 - **TasmoSiz**: Tasmota devices are found automatically over MQTT (retained LWT and discovery messages),
   with live relay state, sensors (temperature, humidity, pressure, energy …), WiFi signal, uptime and
   firmware; switching of every relay with confirmation from the device; "Scan network" over HTTP as a
-  fallback; manual adding, renaming, grouping and removing of devices (administrator)
+  fallback; manual adding, renaming, grouping and removing of devices and naming of every switch (administrator)
+- **TasmoSiz consoles**: the live log of up to 4 devices at once, one below the other, with pause, clear,
+  auto-scroll and close; administrators can send commands, users can only read
 
 ## Project layout
 
@@ -214,4 +216,12 @@ Also back up `/var/lib/homestart/icons/`, `/opt/homestart/homestart.ini` and `/e
 - "Scan network" checks every address of the subnet on port 80 with `/cm?cmnd=Status 0`. Devices with web
   login enabled are marked "login required" unless the shared Tasmota login is entered under
   *Configuration → Devices*. The login is stored encrypted (AES-256-GCM) and is not needed for MQTT.
+- Switch names set in HomeStart are stored only in HomeStart; the device keeps its own FriendlyName, which is
+  shown when the HomeStart name is empty.
+- **Consoles** read the device's web log (`/cs`, the same source as the console in the Tasmota web page) once
+  per second while the console is open; several viewers of one device share a single poller. Devices with web
+  login enabled need the shared Tasmota login from *Configuration → Devices*; without it, or when the web
+  interface does not answer, the console shows the device's MQTT messages instead ("MQTT only").
+  Commands are sent over MQTT (`cmnd/<topic>/<command>`), or over HTTP when MQTT is not available. Only the
+  command name is written to the server log, because commands such as `WebPassword` contain secrets.
 - The MQTT broker accepts anonymous clients, so allow port 1883 only from the local subnet in the firewall.

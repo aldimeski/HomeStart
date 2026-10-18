@@ -89,6 +89,8 @@ class TasmotaDevice(Base):
     mac: Mapped[str | None] = mapped_column(String(17), index=True)
     hostname: Mapped[str | None] = mapped_column(String(64))
     friendly_names: Mapped[str | None] = mapped_column(Text)  # JSON list, one name per relay
+    # Relay names set in HomeStart (JSON list by position); they override the device's FriendlyName.
+    relay_names: Mapped[str | None] = mapped_column(Text)
     firmware: Mapped[str | None] = mapped_column(String(64))
     model: Mapped[str | None] = mapped_column(String(64))
     group_name: Mapped[str | None] = mapped_column(String(64))

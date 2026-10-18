@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { mdiChevronDown, mdiChevronUp, mdiLockOutline, mdiOpenInNew, mdiPencilOutline } from '@mdi/js'
+import {
+  mdiChevronDown,
+  mdiChevronUp,
+  mdiConsoleLine,
+  mdiLockOutline,
+  mdiOpenInNew,
+  mdiPencilOutline,
+} from '@mdi/js'
 import type { TasmotaChannel, TasmotaDevice } from '../api'
 import { tasmota } from '../stores/tasmota'
 import MdiIcon from './mdi-icon.vue'
 import ToggleSwitch from './toggle-switch.vue'
 import WifiSignal from './wifi-signal.vue'
 
-const props = defineProps<{ device: TasmotaDevice; canEdit: boolean }>()
-const emit = defineEmits<{ edit: [device: TasmotaDevice] }>()
+const props = defineProps<{ device: TasmotaDevice; canEdit: boolean; consoleOpen?: boolean }>()
+const emit = defineEmits<{ edit: [device: TasmotaDevice]; console: [device: TasmotaDevice] }>()
 
 const SUMMARY_READINGS = ['Temperature', 'Humidity', 'Pressure', 'Illuminance', 'CO2']
 
@@ -74,7 +81,8 @@ async function toggle(channel: TasmotaChannel) {
 }
 
 function channelLabel(channel: TasmotaChannel) {
-  return channel.label || `Relay ${channel.channel}`
+  if (channel.label) return channel.label
+  return props.device.channels.length === 1 ? 'Power' : `Relay ${channel.channel}`
 }
 </script>
 
@@ -102,26 +110,20 @@ function channelLabel(channel: TasmotaChannel) {
       <button v-if="canEdit" class="btn-icon -mt-1 -mr-1 h-8 w-8" title="Edit device" @click="emit('edit', device)">
         <MdiIcon :path="mdiPencilOutline" :size="18" />
       </button>
-      <ToggleSwitch
-        v-if="device.channels.length === 1"
-        :checked="device.channels[0].state === null ? null : device.channels[0].state === 'ON'"
-        :disabled="offline || device.channels[0].state === null"
-        :busy="busyChannel === 1"
-        :label="`Switch ${device.display_name} ${device.channels[0].state === 'ON' ? 'off' : 'on'}`"
-        @toggle="toggle(device.channels[0])"
-      />
     </header>
 
     <p class="text-[15px]">{{ summary }}</p>
 
-    <ul v-if="device.channels.length > 1" class="flex flex-col gap-1.5">
+    <WifiSignal :rssi="device.wifi?.rssi" :signal="device.wifi?.signal" :muted="offline" />
+
+    <ul v-if="device.channels.length" class="flex flex-col gap-1.5">
       <li v-for="channel in device.channels" :key="channel.channel" class="flex items-center gap-2 text-sm">
         <span class="min-w-0 flex-1 truncate">{{ channelLabel(channel) }}</span>
         <ToggleSwitch
           :checked="channel.state === null ? null : channel.state === 'ON'"
           :disabled="offline || channel.state === null"
           :busy="busyChannel === channel.channel"
-          :label="`Switch ${channelLabel(channel)} ${channel.state === 'ON' ? 'off' : 'on'}`"
+          :label="`Switch ${channel.label ?? device.display_name} ${channel.state === 'ON' ? 'off' : 'on'}`"
           @toggle="toggle(channel)"
         />
       </li>
@@ -129,23 +131,32 @@ function channelLabel(channel: TasmotaChannel) {
 
     <p v-if="error" class="error-box py-1.5" role="alert">{{ error }}</p>
 
-    <WifiSignal :rssi="device.wifi?.rssi" :signal="device.wifi?.signal" :muted="offline" />
-
-    <div class="mt-auto flex items-center gap-2 pt-1">
+    <div class="mt-auto flex flex-wrap items-center gap-2 pt-1">
       <a
         v-if="device.web_url && !offline"
         :href="device.web_url"
         target="_blank"
         rel="noopener noreferrer"
-        class="btn px-2.5 py-1 text-sm"
+        class="btn px-2.5 py-1 text-sm whitespace-nowrap"
+        title="Open the device's web interface in a new tab"
       >
-        Open web UI
+        Web UI
         <MdiIcon :path="mdiOpenInNew" :size="14" />
       </a>
-      <span v-else class="btn pointer-events-none px-2.5 py-1 text-sm opacity-40" aria-disabled="true">
-        Open web UI
+      <span v-else class="btn pointer-events-none px-2.5 py-1 text-sm whitespace-nowrap opacity-40" aria-disabled="true">
+        Web UI
         <MdiIcon :path="mdiOpenInNew" :size="14" />
       </span>
+      <button
+        class="btn px-2.5 py-1 text-sm whitespace-nowrap"
+        :class="consoleOpen ? 'border-accent text-accent' : ''"
+        :aria-pressed="consoleOpen"
+        :title="consoleOpen ? 'Close the console' : 'Show the live log below the devices'"
+        @click="emit('console', device)"
+      >
+        <MdiIcon :path="mdiConsoleLine" :size="14" />
+        Console
+      </button>
       <button
         class="ml-auto inline-flex items-center gap-0.5 text-xs text-muted hover:text-ink"
         :aria-expanded="showDetails"
