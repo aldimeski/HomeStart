@@ -105,7 +105,7 @@ def test_lwt_discovers_device_and_old_firmware_status_is_merged(manager):
     assert device["firmware"] == "8.1.0(tasmota)"
     assert device["web_url"] == "http://192.0.2.58"
     assert device["channels"] == [
-        {"channel": 1, "label": "Sonoff grejanje", "custom_label": None, "device_label": "Sonoff grejanje", "state": "OFF", "locked": False}
+        {"channel": 1, "label": "Sonoff grejanje", "custom_label": None, "device_label": "Sonoff grejanje", "state": "OFF", "locked": False, "icon": None}
     ]
     assert device["wifi"] == {"rssi": 74, "signal": -63}
     assert {row["name"] for row in device["sensors"]} == {"Temperature", "Humidity"}
@@ -475,3 +475,38 @@ async def test_console_power_commands_respect_locks(manager):
         await console.command(command, "admin")
     assert [topic for topic, _ in manager.mqtt.published] == ["cmnd/desk/Power2", "cmnd/desk/Power1", "cmnd/desk/Backlog"]
     manager.close_console(console, queue)
+
+
+# --- icons -------------------------------------------------------------------------
+
+
+def test_device_and_switch_icons(client):
+    manager = client.app.state.tasmota
+    manager.handle_message("tele/bath/LWT", b"Online", False)
+    manager.handle_message("stat/bath/STATUS0", json.dumps(STATUS0_COMBINED).encode(), False)
+    device_id = client.get("/api/tasmota/devices").json()["devices"][0]["id"]
+    url = f"/api/tasmota/devices/{device_id}"
+
+    body = {"name": None, "group_name": None, "icon": "builtin:gas-boiler", "relay_icons": ["mdi:lightbulb", "", None]}
+    device = client.put(url, json=body, headers=CSRF).json()
+    assert device["icon"] == "builtin:gas-boiler"
+    assert [c["icon"] for c in device["channels"]] == ["mdi:lightbulb", None, None]
+
+    # Omitted fields keep their values; an empty icon removes it.
+    assert client.put(url, json={"name": "Bath"}, headers=CSRF).json()["icon"] == "builtin:gas-boiler"
+    assert client.put(url, json={"name": "Bath", "icon": ""}, headers=CSRF).json()["icon"] is None
+    assert client.put(url, json={"icon": "javascript:alert(1)"}, headers=CSRF).status_code == 422
+    assert client.put(url, json={"relay_icons": ["mdi:Bad Name"]}, headers=CSRF).status_code == 422
+
+
+def test_uploaded_icon_used_by_a_switch_cannot_be_deleted(client):
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>'
+    icon = client.post("/api/icons", files={"file": ("lamp.svg", svg, "image/svg+xml")}, headers=CSRF).json()["icon"]
+    client.app.state.tasmota.handle_message("tele/lamp/LWT", b"Online", False)
+    client.app.state.tasmota.handle_message("stat/lamp/RESULT", b'{"POWER":"ON"}', False)
+    device_id = client.get("/api/tasmota/devices").json()["devices"][0]["id"]
+    client.put(f"/api/tasmota/devices/{device_id}", json={"relay_icons": [icon]}, headers=CSRF)
+
+    assert client.delete(f"/api/icons/{icon[7:]}", headers=CSRF).status_code == 409
+    client.put(f"/api/tasmota/devices/{device_id}", json={"relay_icons": [None]}, headers=CSRF)
+    assert client.delete(f"/api/icons/{icon[7:]}", headers=CSRF).status_code == 204

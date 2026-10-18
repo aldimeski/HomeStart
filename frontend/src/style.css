@@ -15,6 +15,8 @@
   --hs-on-accent: #ffffff;
   --hs-danger: #dc2626;
   --hs-danger-soft: #fef2f2;
+  --hs-on: #f59e0b;
+  --hs-flame: #ea580c;
   color-scheme: light;
 }
 
@@ -31,6 +33,8 @@
   --hs-on-accent: #042f2e;
   --hs-danger: #f87171;
   --hs-danger-soft: #3a1f22;
+  --hs-on: #fbbf24;
+  --hs-flame: #fb923c;
   color-scheme: dark;
 }
 
@@ -88,6 +92,17 @@ body {
   .error-box {
     @apply rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger;
   }
+}
+
+/* Switch icons light up while the switch is on: parts marked in icons/builtin-icons.ts and icons/switch-icons.ts. */
+.icon-on .lit {
+  fill: var(--hs-on);
+}
+.icon-on .lit-line {
+  stroke: var(--hs-on);
+}
+.icon-on .flame {
+  fill: var(--hs-flame);
 }
 
 :focus-visible {

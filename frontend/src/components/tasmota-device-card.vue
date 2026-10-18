@@ -12,6 +12,7 @@ import {
 } from '@mdi/js'
 import type { TasmotaChannel, TasmotaDevice } from '../api'
 import { tasmota } from '../stores/tasmota'
+import LinkIcon from './link-icon.vue'
 import MdiIcon from './mdi-icon.vue'
 import ToggleSwitch from './toggle-switch.vue'
 import WifiSignal from './wifi-signal.vue'
@@ -114,7 +115,10 @@ function channelLabel(channel: TasmotaChannel) {
   <article class="card flex flex-col gap-2.5 p-4" :class="offline ? 'opacity-80' : ''">
     <header class="flex items-start gap-2">
       <div class="min-w-0 flex-1">
-        <h3 class="truncate font-bold" :title="device.friendly_name ?? undefined">{{ device.display_name }}</h3>
+        <h3 class="flex items-center gap-2 font-bold" :title="device.friendly_name ?? undefined">
+          <LinkIcon v-if="device.icon" :icon="device.icon" :size="22" />
+          <span class="truncate">{{ device.display_name }}</span>
+        </h3>
         <p class="flex items-center gap-1.5 text-sm text-muted">
           <span
             class="h-2 w-2 rounded-full"
@@ -142,6 +146,13 @@ function channelLabel(channel: TasmotaChannel) {
 
     <ul v-if="device.channels.length" class="flex flex-col gap-1.5">
       <li v-for="channel in device.channels" :key="channel.channel" class="flex items-center gap-2 text-sm">
+        <LinkIcon
+          v-if="channel.icon"
+          :icon="channel.icon"
+          :size="22"
+          :state="channel.state === 'ON' && !offline ? 'on' : 'off'"
+          :class="offline ? 'opacity-50' : ''"
+        />
         <span class="min-w-0 flex-1 truncate">{{ channelLabel(channel) }}</span>
         <button
           v-if="canEdit"

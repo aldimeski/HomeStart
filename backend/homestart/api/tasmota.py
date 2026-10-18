@@ -9,8 +9,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from ..db import SessionLocal
 from ..models import ROLE_ADMIN, User
+from ..schemas import ICON_PATTERN
 from ..security import SESSION_COOKIE, get_current_user, require_admin, user_for_token
-from ..services.tasmota.manager import DeviceError, TasmotaManager
+from ..services.tasmota.manager import KEEP, DeviceError, TasmotaManager
 from ..services.tasmota.mqtt_link import MqttUnavailable
 
 router = APIRouter(tags=["tasmota"])
@@ -41,8 +42,21 @@ class DeviceUpdate(BaseModel):
     group_name: str | None = Field(default=None, max_length=64)
     # By relay position; an empty entry shows the device's own FriendlyName. Omitted keeps the stored names.
     relay_names: list[str | None] | None = Field(default=None, max_length=32)
+    # Omitted keeps the stored icon; null or "" removes it.
+    icon: str | None = None
+    relay_icons: list[str | None] | None = Field(default=None, max_length=32)
 
     _clean = field_validator("name", "group_name")(_optional_text)
+
+    @field_validator("icon")
+    @classmethod
+    def _check_icon(cls, value: str | None) -> str | None:
+        return _icon_reference(value)
+
+    @field_validator("relay_icons")
+    @classmethod
+    def _check_relay_icons(cls, value: list[str | None] | None) -> list[str | None] | None:
+        return None if value is None else [_icon_reference(icon) for icon in value]
 
     @field_validator("relay_names")
     @classmethod
@@ -53,6 +67,13 @@ class DeviceUpdate(BaseModel):
         if any(name and len(name) > 64 for name in cleaned):
             raise ValueError("Relay names are limited to 64 characters")
         return cleaned
+
+
+def _icon_reference(value: str | None) -> str | None:
+    value = _optional_text(value)
+    if value and not ICON_PATTERN.match(value):
+        raise ValueError("Invalid icon reference")
+    return value
 
 
 class PowerRequest(BaseModel):
@@ -108,7 +129,8 @@ def update_device(
     manager: TasmotaManager = Depends(get_manager),
 ):
     try:
-        return manager.update_device(device_id, body.name, body.group_name, body.relay_names)
+        icon = body.icon if "icon" in body.model_fields_set else KEEP
+        return manager.update_device(device_id, body.name, body.group_name, body.relay_names, icon, body.relay_icons)
     except DeviceError as exc:
         _raise(exc)
 

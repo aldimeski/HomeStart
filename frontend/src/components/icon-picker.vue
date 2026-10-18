@@ -10,7 +10,8 @@ import MdiIcon from './mdi-icon.vue'
 
 const MAX_UPLOAD_BYTES = 256 * 1024
 
-const props = defineProps<{ modelValue: string }>()
+/** clearable adds a "No icon" choice, which sets the value to an empty string. */
+const props = defineProps<{ modelValue: string; clearable?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string]; close: [] }>()
 
 const tab = ref<'library' | 'uploaded'>(props.modelValue.startsWith('upload:') ? 'uploaded' : 'library')
@@ -98,6 +99,9 @@ function tabClass(active: boolean) {
       </button>
       <button type="button" role="tab" :aria-selected="tab === 'uploaded'" :class="tabClass(tab === 'uploaded')" @click="tab = 'uploaded'">
         My icons
+      </button>
+      <button v-if="clearable" type="button" class="btn ml-auto px-3 py-1.5" :disabled="!modelValue" @click="choose('')">
+        No icon
       </button>
     </div>
 

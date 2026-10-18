@@ -20,6 +20,9 @@ menu as "Coming soon".
   with live relay state, sensors (temperature, humidity, pressure, energy …), WiFi signal, uptime and
   firmware; switching of every relay with confirmation from the device; "Scan network" over HTTP as a
   fallback; manual adding, renaming, grouping and removing of devices and naming of every switch (administrator)
+- **Icons on devices and switches**: the same icons as ShoLink (library, device icons incl. a gas boiler,
+  uploaded icons); a switch icon lights up while the switch is on (the glass of a bulb turns yellow, the flame
+  of the gas boiler orange, other icons turn yellow; uploaded images are greyed out while off)
 - **Switch locks**: an administrator can lock any switch; nobody (administrators included) can switch it until
   an administrator unlocks it; users see the lock but cannot change it
 - **TasmoSiz consoles**: the live log of up to 4 devices at once in a column to the right of the devices

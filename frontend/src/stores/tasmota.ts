@@ -103,7 +103,13 @@ export const tasmota = {
 
   async update(
     id: number,
-    data: { name: string | null; group_name: string | null; relay_names?: (string | null)[] },
+    data: {
+      name: string | null
+      group_name: string | null
+      icon?: string | null
+      relay_names?: (string | null)[]
+      relay_icons?: (string | null)[]
+    },
   ) {
     upsert(await api<TasmotaDevice>('PUT', `/api/tasmota/devices/${id}`, data))
   },

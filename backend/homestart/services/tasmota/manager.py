@@ -49,6 +49,7 @@ CREDENTIAL_PASSWORD_KEY = "tasmota_password"
 
 
 LOCKED_MESSAGE = "This switch is locked by an administrator"
+KEEP = object()  # update_device: leave the stored value unchanged
 
 
 class DeviceError(Exception):
@@ -366,6 +367,7 @@ class TasmotaManager:
         names = json.loads(device.friendly_names) if device.friendly_names else []
         custom = json.loads(device.relay_names) if device.relay_names else []
         locked = self.locked_channels(device)
+        icons = json.loads(device.relay_icons) if device.relay_icons else []
         count = max(live.relay_count or 0, max(live.power, default=0))
         channels = []
         for channel in range(1, count + 1):
@@ -379,6 +381,7 @@ class TasmotaManager:
                     "device_label": device_label,
                     "state": live.power.get(channel),
                     "locked": channel in locked,
+                    "icon": icons[channel - 1] if channel <= len(icons) else None,
                 }
             )
         web_url = None
@@ -389,6 +392,7 @@ class TasmotaManager:
             "name": device.name,
             "display_name": device.name or device.mqtt_topic or device.hostname or device.host or f"Device {device.id}",
             "friendly_name": (names[0] or None) if names else None,
+            "icon": device.icon,
             "topic": device.mqtt_topic,
             "host": device.host,
             "port": device.port,
@@ -616,15 +620,27 @@ class TasmotaManager:
         return self.view(device)
 
     def update_device(
-        self, device_id: int, name: str | None, group_name: str | None, relay_names: list[str | None] | None = None
+        self,
+        device_id: int,
+        name: str | None,
+        group_name: str | None,
+        relay_names: list[str | None] | None = None,
+        icon: Any = KEEP,
+        relay_icons: list[str | None] | None = None,
     ) -> dict[str, Any]:
-        """relay_names None keeps the stored relay names; an empty entry falls back to the device's name."""
+        """relay_names / relay_icons None keep the stored lists; an empty relay name falls back to the device's name."""
         device = self.get(device_id)
         device.name = name
         device.group_name = group_name
         if relay_names is not None:
             cleaned = clean_relay_names(relay_names)
             device.relay_names = json.dumps(cleaned) if cleaned else None
+        if icon is not KEEP:
+            device.icon = icon
+        if relay_icons is not None:
+            while relay_icons and not relay_icons[-1]:
+                relay_icons = relay_icons[:-1]
+            device.relay_icons = json.dumps(relay_icons) if relay_icons else None
         device = self._save(device)
         self._mark_dirty(device.id)
         return self.view(device)

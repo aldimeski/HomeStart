@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..db import get_db
-from ..models import Link, User
+from ..models import Link, TasmotaDevice, User
 from ..schemas import IconOut
 from ..security import get_current_user, get_settings, require_admin
 from ..services.svg_sanitizer import SvgError, sanitize_svg
@@ -104,6 +104,12 @@ def delete_icon(
     db: Session = Depends(get_db),
 ):
     path = _icon_path(settings, name)
-    if db.scalar(select(Link.id).where(Link.icon == f"upload:{name}")) is not None:
+    reference = f"upload:{name}"
+    if db.scalar(select(Link.id).where(Link.icon == reference)) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "The icon is used by a link")
+    used_by_device = select(TasmotaDevice.id).where(
+        (TasmotaDevice.icon == reference) | TasmotaDevice.relay_icons.contains(f'"{reference}"')
+    )
+    if db.scalar(used_by_device) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The icon is used by a TasmoSiz device or switch")
     path.unlink(missing_ok=True)

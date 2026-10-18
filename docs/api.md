@@ -26,11 +26,11 @@ the header `X-HomeStart: 1`.
 | GET | `/api/icons` | admin | Uploaded icons |
 | POST | `/api/icons` | admin | multipart `file` (SVG/PNG/WebP/ICO, ≤ 256 KB) → `{icon: "upload:…"}` |
 | GET | `/api/icons/{name}` | user | Icon file |
-| DELETE | `/api/icons/{name}` | admin | Delete an icon that no link uses |
+| DELETE | `/api/icons/{name}` | admin | Delete an icon that no link, device or switch uses |
 | GET | `/api/tasmota/devices` | user | `{mqtt_connected, devices: [...]}` with live state |
 | POST | `/api/tasmota/devices` | admin | `{host, port, name?, group_name?}` – manual add, tests the connection |
 | GET | `/api/tasmota/devices/{id}/status` | user | One device with live state |
-| PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name, relay_names?}` – `relay_names` by relay position, empty = device name, omitted = unchanged |
+| PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name, icon?, relay_names?, relay_icons?}` – lists by relay position; empty name = device name; omitted = unchanged; `icon` null/"" removes it |
 | DELETE | `/api/tasmota/devices/{id}` | admin | Remove device |
 | POST | `/api/tasmota/devices/{id}/power` | user | `{channel, action: on\|off\|toggle}` → device after confirmation; 423 if the switch is locked |
 | PUT | `/api/tasmota/devices/{id}/lock` | admin | `{channel, locked}` – lock or unlock a switch |

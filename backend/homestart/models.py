@@ -93,6 +93,9 @@ class TasmotaDevice(Base):
     relay_names: Mapped[str | None] = mapped_column(Text)
     # Relays an administrator locked (JSON list of channel numbers); nobody can switch them until unlocked.
     locked_relays: Mapped[str | None] = mapped_column(Text)
+    # Same icon references as ShoLink links (mdi:, builtin:, upload:); relay_icons is a JSON list by position.
+    icon: Mapped[str | None] = mapped_column(String(160))
+    relay_icons: Mapped[str | None] = mapped_column(Text)
     firmware: Mapped[str | None] = mapped_column(String(64))
     model: Mapped[str | None] = mapped_column(String(64))
     group_name: Mapped[str | None] = mapped_column(String(64))

@@ -99,6 +99,7 @@ export interface TasmotaChannel {
   state: 'ON' | 'OFF' | null
   /** Locked by an administrator: nobody can switch it until it is unlocked. */
   locked: boolean
+  icon: string | null
 }
 
 export interface SensorReading {
@@ -113,6 +114,7 @@ export interface TasmotaDevice {
   name: string | null
   display_name: string
   friendly_name: string | null
+  icon: string | null
   topic: string | null
   host: string | null
   port: number

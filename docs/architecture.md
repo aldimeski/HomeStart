@@ -86,6 +86,10 @@ also shows the message if the frame has not loaded within 15 seconds.
   restart; a live (non-retained) message brings them back.
 - **Switch names**: `relay_names` (JSON list by relay position) overrides the device's FriendlyName per relay;
   an empty entry falls back to it. The device itself is not changed.
+- **Icons**: `icon` and `relay_icons` (JSON list by relay position) use the ShoLink icon references; uploaded
+  icons in use by a device or switch cannot be deleted. Switch icons get the class `icon-on` while on: builtin
+  icons mark glowing parts with `lit`, `lit-line` or `flame`; MDI icons are split into glowing and plain layers
+  by `frontend/src/icons/switch-icons.ts` (bulbs and lamps glow in part, other icons completely).
 - **Switch locks**: `locked_relays` (JSON list of channel numbers) is set by administrators
   (`PUT /api/tasmota/devices/{id}/lock`). `set_power` refuses a locked channel with 423 for every role, and
   the console refuses `Power<n>` / `Power0` commands with a payload (also inside `Backlog`) for locked
