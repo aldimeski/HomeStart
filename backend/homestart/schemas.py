@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 USERNAME_PATTERN = r"^[A-Za-z0-9._-]{1,64}$"
-ICON_PATTERN = re.compile(r"^(mdi:[a-z0-9-]{1,100}|upload:[a-f0-9]{32}\.(svg|png|webp|ico))$")
+ICON_PATTERN = re.compile(r"^(mdi:[a-z0-9-]{1,100}|builtin:[a-z0-9-]{1,64}|upload:[a-f0-9]{32}\.(svg|png|webp|ico))$")
 
 
 class LoginRequest(BaseModel):

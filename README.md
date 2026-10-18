@@ -13,7 +13,7 @@ The TasmoSiz and Škoda modules are shown in the menu as "Coming soon".
 - Light / dark theme and a side menu that collapses to icons; both are remembered per user
 - Responsive layout: on phones the menu becomes a slide-out drawer
 - **ShoLink**: shared links opened inside the app (iframe) or optionally in a new tab, Material Design Icons
-  (served locally) or uploaded icons (SVG/PNG/WebP/ICO, up to 256 KB; SVG files are cleaned of scripts)
+  (served locally), device icons (Tasmota, Sonoff, ESP32) or uploaded icons (SVG/PNG/WebP/ICO, up to 256 KB; SVG files are cleaned of scripts)
 - Clear message with an "Open in new tab" button when a page cannot be embedded
 
 ## Project layout

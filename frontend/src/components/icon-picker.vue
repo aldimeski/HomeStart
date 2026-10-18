@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { mdiDeleteOutline, mdiUpload } from '@mdi/js'
 import { api } from '../api'
+import { searchBuiltin } from '../icons/builtin-icons'
 import { loadMdiLibrary, searchMdi, SUGGESTED_ICONS, type MdiIcon as MdiEntry } from '../icons/mdi-library'
 import BaseDialog from './base-dialog.vue'
 import LinkIcon from './link-icon.vue'
@@ -26,6 +27,7 @@ const suggested = computed(() =>
     (icon): icon is MdiEntry => !!icon,
   ),
 )
+const devices = computed(() => searchBuiltin(query.value))
 const results = computed(() => (query.value.trim() ? searchMdi(library.value, query.value) : suggested.value))
 
 onMounted(async () => {
@@ -108,6 +110,23 @@ function tabClass(active: boolean) {
         aria-label="Search icons"
         autofocus
       />
+      <template v-if="devices.length">
+        <p class="mb-2 text-xs text-muted">Device icons</p>
+        <div class="mb-4 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2">
+          <button
+            v-for="icon in devices"
+            :key="icon.name"
+            type="button"
+            class="flex flex-col items-center gap-1 rounded-lg border p-2 text-[11px] text-muted hover:border-accent hover:text-ink"
+            :class="modelValue === `builtin:${icon.name}` ? 'border-accent bg-accent-soft text-accent' : 'border-line'"
+            :title="icon.label"
+            @click="choose(`builtin:${icon.name}`)"
+          >
+            <MdiIcon :path="icon.path" :body="icon.body" :size="26" class="text-ink" />
+            <span class="w-full truncate text-center">{{ icon.label }}</span>
+          </button>
+        </div>
+      </template>
       <p v-if="libraryError" class="error-box">{{ libraryError }}</p>
       <p v-else-if="!library.length" class="text-sm text-muted">Loading icons…</p>
       <template v-else>
@@ -128,7 +147,7 @@ function tabClass(active: boolean) {
             <span class="w-full truncate text-center">{{ icon.name }}</span>
           </button>
         </div>
-        <p v-if="query.trim() && !results.length" class="text-sm text-muted">No icons found.</p>
+        <p v-if="query.trim() && !results.length && !devices.length" class="text-sm text-muted">No icons found.</p>
       </template>
     </template>
 

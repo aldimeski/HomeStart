@@ -36,6 +36,8 @@ passes. An IP is also locked after four times that many failures across all user
 - `mdi:<name>` — Material Design Icons. `frontend/scripts/build-mdi-icons.mjs` builds
   `/mdi-icons.json` from the `@mdi/svg` package at build time; the browser loads it lazily (≈780 KB gzip),
   so no CDN is used. Fixed menu icons are bundled directly from `@mdi/js`.
+- `builtin:<name>` — HomeStart's own device icons (`tasmota`, `sonoff`, `esp32`) defined in
+  `frontend/src/icons/builtin-icons.ts`; `tasmota` uses the same symbol as the TasmoSiz menu item.
 - `upload:<32 hex>.<ext>` — uploaded files in `icons_dir`. Type is detected from content; SVG is rebuilt
   from an allowlist of elements and attributes (no scripts, event handlers, external references).
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { Link, LinkInput } from '../api'
 import { links } from '../stores/links'
+import { builtinIcon } from '../icons/builtin-icons'
 import BaseDialog from './base-dialog.vue'
 import IconPicker from './icon-picker.vue'
 import LinkIcon from './link-icon.vue'
@@ -18,6 +19,12 @@ const form = reactive<LinkInput>({
 const error = ref('')
 const saving = ref(false)
 const pickerOpen = ref(false)
+
+const iconLabel = computed(() => {
+  if (form.icon.startsWith('mdi:')) return form.icon.slice(4)
+  if (form.icon.startsWith('builtin:')) return builtinIcon(form.icon.slice(8))?.label ?? form.icon
+  return 'Uploaded icon'
+})
 
 async function save() {
   error.value = ''
@@ -62,7 +69,7 @@ async function save() {
             <LinkIcon :icon="form.icon" :size="26" />
           </span>
           <button type="button" class="btn" @click="pickerOpen = true">Choose icon…</button>
-          <span class="truncate text-xs text-muted">{{ form.icon.startsWith('mdi:') ? form.icon.slice(4) : 'Uploaded icon' }}</span>
+          <span class="truncate text-xs text-muted">{{ iconLabel }}</span>
         </div>
       </div>
       <label class="flex items-start gap-2 text-sm">

@@ -169,6 +169,15 @@ def test_invalid_link_urls_are_rejected(client, url):
     assert client.post("/api/links", json={"title": "x", "url": url}, headers=CSRF).status_code == 422
 
 
+def test_builtin_icon_reference_is_accepted(client):
+    login(client)
+    response = client.post(
+        "/api/links", json={"title": "Plug", "url": "http://192.0.2.20", "icon": "builtin:sonoff"}, headers=CSRF
+    )
+    assert response.status_code == 201
+    assert response.json()["icon"] == "builtin:sonoff"
+
+
 def test_invalid_icon_reference_is_rejected(client):
     login(client)
     response = client.post(
