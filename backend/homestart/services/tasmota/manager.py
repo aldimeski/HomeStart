@@ -92,7 +92,8 @@ class TasmotaManager:
         self._tasks: list[asyncio.Task] = []
         self.consoles: dict[int, DeviceConsole] = {}
         self.zigbee: dict[int, ZigbeeNetwork] = {}  # by bridge device id
-        self._zigbee_waiters: dict[tuple[str, str], list[asyncio.Future]] = {}
+        # (bridge topic, short address) -> (expected Power value, future)
+        self._zigbee_waiters: dict[tuple[str, str], list[tuple[int, asyncio.Future]]] = {}
 
     # --- lifecycle ---------------------------------------------------------------
 
@@ -377,12 +378,14 @@ class TasmotaManager:
         network = self._zigbee_network(device)
         now = time.time()
 
-        for short in network.apply_entries(entries):
-            values = network.devices[short].values
-            if "Power" in values:
-                for future in self._zigbee_waiters.get((device_topic, short), []):
-                    if not future.done():
-                        future.set_result(values["Power"])
+        network.apply_entries(entries)
+        for entry in entries:
+            # Only a report with the requested state confirms a command: right after ZbSend a bulb often
+            # reports its old state first.
+            short = entry["Device"].upper().replace("0X", "0x")
+            for expected, future in self._zigbee_waiters.get((device_topic, short), []):
+                if entry.get("Power") == expected and not future.done():
+                    future.set_result(expected)
         if isinstance(data.get("ZbState"), dict) and network.apply_state(data["ZbState"], now):
             # A device joined or rejoined: read the list again once it has introduced itself.
             self._publish_soon(f"cmnd/{device_topic}/ZbInfo", delay=3)
@@ -415,8 +418,9 @@ class TasmotaManager:
             action = "off" if zb_device.values.get("Power") else "on"
 
         key = (device.mqtt_topic, short)
-        future = asyncio.get_running_loop().create_future()
-        self._zigbee_waiters.setdefault(key, []).append(future)
+        waiter = (1 if action == "on" else 0, asyncio.get_running_loop().create_future())
+        future = waiter[1]
+        self._zigbee_waiters.setdefault(key, []).append(waiter)
         try:
             command = json.dumps({"Device": short, "Send": {"Power": "On" if action == "on" else "Off"}})
             await self.publish(f"cmnd/{device.mqtt_topic}/ZbSend", command)
@@ -424,7 +428,7 @@ class TasmotaManager:
         except TimeoutError:
             raise DeviceError("The Zigbee device did not confirm the command", 504) from None
         finally:
-            self._zigbee_waiters[key].remove(future)
+            self._zigbee_waiters[key].remove(waiter)
         return self.view(device)
 
     async def zigbee_join(self, device_id: int, enabled: bool, username: str) -> dict[str, Any]:

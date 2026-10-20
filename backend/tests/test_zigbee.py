@@ -67,10 +67,12 @@ class FakeMqtt:
         self.published.append((topic, payload))
         if self.reply and topic.endswith("/ZbSend"):
             command = json.loads(payload)
-            report = {"LR_Ikea_LB1": {"Device": command["Device"], "Power": 1 if command["Send"]["Power"] == "On" else 0}}
-            asyncio.get_running_loop().call_soon(
-                self.manager.handle_message, "tele/zigbee_bridge/SENSOR", json.dumps(report).encode(), False
-            )
+            new = 1 if command["Send"]["Power"] == "On" else 0
+            loop = asyncio.get_running_loop()
+            # A real bulb first reports its old state, then the new one (seen on an IKEA TRADFRI bulb).
+            for delay, power in ((0, 1 - new), (0.05, new)):
+                report = {"LR_Ikea_LB1": {"Device": command["Device"], "Power": power}}
+                loop.call_later(delay, self.manager.handle_message, "tele/zigbee_bridge/SENSOR", json.dumps(report).encode(), False)
 
 
 @pytest.fixture

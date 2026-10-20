@@ -104,7 +104,7 @@ also shows the message if the frame has not loaded within 15 seconds.
   `ZigbeeNetwork` in memory and is asked `ZbInfo` (also on MQTT connect and Refresh). SENSOR and RESULT
   payloads with Zigbee content are not treated as the bridge's own sensors. Kinds: *light* when ZbInfo lists an
   on/off or light cluster in `Config` (O../L..), *sensor* when known measurements are present, *remote* for
-  battery devices without either. `ZbSend {"Device","Send":{"Power"}}` waits for the device's report.
+  battery devices without either. `ZbSend {"Device","Send":{"Power"}}` waits for a report with the requested state (a bulb first repeats its old state).
   `ZbPermitJoin 1/0` (admin) opens pairing for 60 s; ZbState 20/21/22 keep the state in sync and ZbState 30/34
   (device announced) triggers a new ZbInfo. `ZbMap` (admin) collects the result pages for 30 s into nodes
   (coordinator, routers, end devices) and links with the best link quality of both directions. The bridge's
