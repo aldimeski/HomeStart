@@ -117,7 +117,6 @@ if [[ -n "$IMPORT" ]]; then
     chmod 640 "$DATA/homestart.db"
     if [[ -d "$IMPORT/icons" ]]; then
       cp -a "$IMPORT/icons/." "$DATA/icons/"
-      chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA/icons"
     fi
     echo "imported the database and icons from $IMPORT"
     if [[ -f "$IMPORT/homestart.key" && ! -f "$CONF/homestart.key" ]]; then
@@ -170,6 +169,10 @@ EOF
   cp "$APP/deploy/homestart-firewall.service" /etc/systemd/system/
   echo "allowed network: $LAN"
 fi
+
+# Imported files keep the modes of the development folder; only the service account needs them.
+chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA/icons" "$DATA/cache"
+chmod -R u=rwX,g=rX,o= "$DATA/icons" "$DATA/cache"
 
 step "systemd services"
 cp "$APP/deploy/homestart.service" "$APP/deploy/homestart-backup.service" "$APP/deploy/homestart-backup.timer" /etc/systemd/system/

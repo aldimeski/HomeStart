@@ -5,8 +5,8 @@ HomeStart is a local web portal that gives quick access to the applications and 
 
 User guide: [docs/user-guide.md](docs/user-guide.md).
 
-Current version: **0.4** — base application, the **ShoLink** module, **TasmoSiz** with device overview and
-consoles, and the **Škoda** vehicle overview (phases 1–5 of the specification).
+Current version: **1.0** — all phases of the specification: base application, **ShoLink**, **TasmoSiz**
+(devices, consoles, Zigbee), **Škoda**, and installation on the Debian server with daily backups.
 
 ## Features
 
