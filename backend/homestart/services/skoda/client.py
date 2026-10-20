@@ -9,6 +9,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 import aiohttp
 from myskoda import MySkoda
@@ -28,11 +29,20 @@ log = logging.getLogger("homestart.skoda")
 logging.getLogger("myskoda").setLevel(logging.WARNING)
 
 REQUEST_TIMEOUT_SECONDS = 30
+IDENTITY_SERVER = "https://identity.vwgroup.io/"
+APP_CONSENTS_HINT = "In the MyŠkoda app this is under Profile → Edit my profile."
 PREFERRED_VIEW_POINTS = ("MAIN", "EXTERIOR_SIDE", "EXTERIOR_FRONT")
 
 
 class SkodaLoginError(Exception):
-    """The account rejected the login; the message is shown to the user."""
+    """The account rejected the login; the message is shown to the user.
+
+    action_url is a Škoda page the user has to open first (terms or consent), when Škoda named one.
+    """
+
+    def __init__(self, message: str, action_url: str | None = None):
+        super().__init__(message)
+        self.action_url = action_url
 
 
 class SkodaUnavailable(Exception):
@@ -203,6 +213,16 @@ async def fetch_account(username: str, password: str, refresh_token: str | None)
         ) from exc
 
 
+def _identity_page(exc: Exception) -> str | None:
+    """The consent or terms page Škoda redirected to; only pages of the VW Group login server are passed on."""
+    location = exc.args[0] if exc.args and isinstance(exc.args[0], str) else None
+    if not location:
+        return None
+    url = urljoin(IDENTITY_SERVER, location)
+    parts = urlsplit(url)
+    return url if parts.scheme == "https" and parts.hostname == urlsplit(IDENTITY_SERVER).hostname else None
+
+
 async def _login(api: MySkoda, username: str, password: str, refresh_token: str | None) -> None:
     if refresh_token:
         try:
@@ -212,9 +232,17 @@ async def _login(api: MySkoda, username: str, password: str, refresh_token: str 
             log.info("Stored Škoda session expired; signing in with the password again")
     try:
         await api.connect(email=username, password=password)
-    except (TermsAndConditionsError, MarketingConsentError) as exc:
+    except MarketingConsentError as exc:
         raise SkodaLoginError(
-            "Škoda asks you to accept new terms or a consent screen. Open the MyŠkoda app, accept it and try again."
+            "Škoda wants an answer to its marketing consent question before it allows the login. Open the Škoda page, "
+            f"accept or decline (either works), then connect again. {APP_CONSENTS_HINT}",
+            _identity_page(exc),
+        ) from exc
+    except TermsAndConditionsError as exc:
+        raise SkodaLoginError(
+            "Škoda has new terms of use that must be accepted before the login works. Open the Škoda page, accept "
+            f"them, then connect again. {APP_CONSENTS_HINT}",
+            _identity_page(exc),
         ) from exc
     except (AuthorizationFailedError, AuthorizationError, NotAuthorizedError) as exc:
         raise SkodaLoginError("The MyŠkoda account rejected the email address or password.") from exc

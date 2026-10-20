@@ -222,3 +222,57 @@ def test_map_tiles_are_cached(client, monkeypatch):
     assert downloads == ["https://tile.openstreetmap.org/12/2275/1474.png"]
     assert client.get("/api/map/tiles/1/2/0.png").status_code == 404  # x out of range at zoom 1
     assert client.get("/api/map/tiles/20/0/0.png").status_code == 404
+
+
+# --- consent and terms pages ---------------------------------------------------------
+
+
+class ConsentFirst:
+    """A MySkoda login that stops at a consent or terms page, like identity.vwgroup.io does."""
+
+    def __init__(self, error):
+        self.error = error
+
+    async def connect(self, email=None, password=None, refresh_token=None):
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_url", "text"),
+    [
+        (
+            "MarketingConsentError",
+            "https://identity.vwgroup.io/signin-service/v1/consent/marketing/abc?relayState=x",
+            "marketing consent",
+        ),
+        ("TermsAndConditionsError", "https://identity.vwgroup.io/signin-service/v1/terms-and-conditions/abc", "new terms"),
+    ],
+)
+async def test_consent_page_is_passed_to_the_user(error, expected_url, text):
+    from myskoda.auth import authorization
+
+    from homestart.services.skoda import client as client_module
+
+    location = expected_url.removeprefix("https://identity.vwgroup.io")  # Škoda may send a relative address
+    with pytest.raises(SkodaLoginError) as raised:
+        await client_module._login(ConsentFirst(getattr(authorization, error)(location)), "a@example.invalid", "pw", None)
+    assert raised.value.action_url == expected_url
+    assert text in str(raised.value)
+
+
+async def test_consent_page_on_another_server_is_not_passed_on():
+    from myskoda.auth.authorization import MarketingConsentError
+
+    from homestart.services.skoda import client as client_module
+
+    with pytest.raises(SkodaLoginError) as raised:
+        await client_module._login(ConsentFirst(MarketingConsentError("https://example.invalid/consent")), "a", "pw", None)
+    assert raised.value.action_url is None
+
+
+def test_connect_answer_contains_the_consent_page(client):
+    url = "https://identity.vwgroup.io/signin-service/v1/consent/marketing/abc"
+    client.fake.error = SkodaLoginError("Škoda wants an answer to its marketing consent question.", url)
+    response = connect(client)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Škoda wants an answer to its marketing consent question.", "action_url": url}

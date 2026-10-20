@@ -34,9 +34,10 @@ IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 
 
 class SkodaError(Exception):
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(self, message: str, status_code: int = 400, action_url: str | None = None):
         super().__init__(message)
         self.status_code = status_code
+        self.action_url = action_url
 
 
 def _is_public_https(url: str) -> bool:
@@ -119,7 +120,7 @@ class SkodaService:
             try:
                 result = await self._fetch(username, password, None)
             except SkodaLoginError as exc:
-                raise SkodaError(str(exc), 400) from exc
+                raise SkodaError(str(exc), 400, exc.action_url) from exc
             except SkodaUnavailable as exc:
                 raise SkodaError(str(exc), 502) from exc
             images = await self._download_images(result, {})

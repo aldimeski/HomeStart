@@ -1,9 +1,12 @@
 export class ApiError extends Error {
   status: number
+  /** The whole error answer, for endpoints that send more than a message. */
+  data: unknown
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, data: unknown = null) {
     super(message)
     this.status = status
+    this.data = data
   }
 }
 
@@ -46,7 +49,7 @@ export async function api<T = unknown>(
   const data = await response.json().catch(() => null)
   if (!response.ok) {
     if (response.status === 401 && !options.skipUnauthorizedHandler) onUnauthorized()
-    throw new ApiError(response.status, errorMessage(data, response.status))
+    throw new ApiError(response.status, errorMessage(data, response.status), data)
   }
   return data as T
 }

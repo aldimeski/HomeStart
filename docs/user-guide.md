@@ -102,7 +102,10 @@ The data is fetched when you open the page for the first time after signing in, 
 15 minutes, and when you press **Refresh**. If Škoda cannot be reached, the last saved data is shown with a
 note. HomeStart only reads information; it never locks, unlocks or controls the car.
 
-If Škoda asks to accept new terms, open the MyŠkoda app once, accept them and try again.
+Sometimes Škoda first wants an answer to a marketing consent question or new terms of use. HomeStart then
+shows a message with **Open the Škoda page**: open it, accept or decline the consent (either works) or accept
+the terms, and press **Connect account** again. The same questions are in the MyŠkoda app under
+Profile → Edit my profile.
 **Sign out of Škoda account** deletes the stored login and all saved car data.
 
 ## Configuration

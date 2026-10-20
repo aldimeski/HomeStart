@@ -1,7 +1,7 @@
 import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from ..models import User
@@ -50,7 +50,8 @@ async def connect_account(
     try:
         return await service.sign_in(user.id, body.username.strip(), body.password, _session_key(request))
     except SkodaError as exc:
-        _raise(exc)
+        # The terms or consent page belongs to this login attempt, so it goes to the browser and not to the log.
+        return JSONResponse({"detail": str(exc), "action_url": exc.action_url}, status_code=exc.status_code)
 
 
 @router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)

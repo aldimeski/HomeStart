@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { api, type SkodaAccount, type SkodaOverview } from '../api'
+import { mdiOpenInNew } from '@mdi/js'
+import { api, ApiError, type SkodaAccount, type SkodaOverview } from '../api'
+import MdiIcon from './mdi-icon.vue'
 
 const account = ref<SkodaAccount | null>(null)
 const form = reactive({ username: '', password: '' })
 const error = ref('')
+// A Škoda page (new terms or consent) that has to be answered before the login works.
+const actionUrl = ref<string | null>(null)
 const busy = ref(false)
 const confirmingSignOut = ref(false)
 
@@ -18,12 +22,15 @@ onMounted(async () => {
 
 async function connect() {
   error.value = ''
+  actionUrl.value = null
   busy.value = true
   try {
     account.value = (await api<SkodaOverview>('PUT', '/api/skoda/account', form)).account
     form.password = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not connect the account'
+    const url = e instanceof ApiError ? (e.data as { action_url?: unknown } | null)?.action_url : null
+    actionUrl.value = typeof url === 'string' && url.startsWith('https://') ? url : null
   } finally {
     busy.value = false
   }
@@ -90,7 +97,13 @@ async function signOut() {
             maxlength="256"
           />
         </div>
-        <p v-if="error" class="error-box" role="alert">{{ error }}</p>
+        <div v-if="error" class="error-box space-y-2" role="alert">
+          <p>{{ error }}</p>
+          <a v-if="actionUrl" :href="actionUrl" target="_blank" rel="noopener noreferrer" class="btn btn-danger bg-surface">
+            Open the Škoda page
+            <MdiIcon :path="mdiOpenInNew" :size="16" />
+          </a>
+        </div>
         <button type="submit" class="btn btn-primary" :disabled="busy">
           {{ busy ? 'Connecting to Škoda…' : 'Connect account' }}
         </button>
