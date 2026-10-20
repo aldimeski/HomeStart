@@ -3,6 +3,8 @@
 HomeStart is a local web portal that gives quick access to the applications and devices used every day
 (smart home, local servers, Tasmota devices, car). It runs on a Debian server in the local network.
 
+User guide: [docs/user-guide.md](docs/user-guide.md).
+
 Current version: **0.4** — base application, the **ShoLink** module, **TasmoSiz** with device overview and
 consoles, and the **Škoda** vehicle overview (phases 1–5 of the specification).
 
@@ -44,7 +46,7 @@ consoles, and the **Škoda** vehicle overview (phases 1–5 of the specification
 backend/                FastAPI application (package "homestart"), Alembic migrations, tests
 frontend/               Vue 3 + Vite + TypeScript + Tailwind single-page app
 deploy/                 systemd unit file
-docs/                   architecture and API notes
+docs/                   user guide, architecture and API notes
 homestart_default.ini   created by the application on first start (no secrets)
 homestart.ini           your local settings (not in git)
 data/                   database and uploaded icons in development (not in git)
@@ -113,6 +115,9 @@ python3 -m venv ../../dev/homestart-venv
 For frontend work with hot reload run `npm run dev` in `frontend/` (port 5173); API calls are proxied to
 the backend on port 8000.
 
+On the server, where the installed HomeStart uses port 8000, the development copy gets a `homestart.ini` in
+the project folder (ignored by git) with `[server] port = 8001`; start Vite with `HOMESTART_PORT=8001 npm run dev`.
+
 Tests:
 
 ```sh
@@ -127,96 +132,55 @@ New database migration after changing `models.py`:
 
 ## Installation on the Debian server (systemd)
 
-The frontend is built once on a development machine; the server needs only Python 3.13.
+HomeStart runs directly on Debian 13 as a systemd service, without Docker. The frontend is built on the
+development machine; the server needs only Python 3.13 (and `sqlite3` for importing data).
 
-1. Build the frontend on the development machine: `cd frontend && npm install && npm run build`.
-2. Install system packages on the server:
+1. On the development machine: build the frontend (`cd frontend && npm install && npm run build`) and copy
+   the project folder to the server, or work in a checkout on the server itself.
+2. On the server, from the project folder:
    ```sh
-   sudo apt install python3.13-venv
+   sudo apt install python3.13-venv sqlite3
+   sudo bash deploy/install.sh --firewall
    ```
-3. Create the service account and folders:
-   ```sh
-   sudo useradd --system --home /var/lib/homestart --shell /usr/sbin/nologin homestart
-   sudo mkdir -p /opt/homestart /var/lib/homestart /var/backups/homestart
-   sudo chown homestart:homestart /var/lib/homestart /var/backups/homestart
-   sudo chmod 750 /var/lib/homestart
-   sudo chmod 700 /var/backups/homestart
-   ```
-4. Copy the application to `/opt/homestart` (`backend/`, `deploy/` and `frontend/dist/`; `node_modules`
-   and `data/` are not needed), for example:
-   ```sh
-   rsync -a --exclude node_modules --exclude data --exclude .git ./ server:/opt/homestart/
-   ```
-5. Create the virtual environment and install the dependencies:
-   ```sh
-   sudo python3 -m venv /opt/homestart/venv
-   sudo /opt/homestart/venv/bin/pip install -r /opt/homestart/backend/requirements.txt
-   ```
-6. Create the encryption key, readable only by the service:
-   ```sh
-   sudo install -d -m 750 -o root -g homestart /etc/homestart
-   head -c 32 /dev/urandom | base64 | sudo tee /etc/homestart/homestart.key > /dev/null
-   sudo chown root:homestart /etc/homestart/homestart.key
-   sudo chmod 640 /etc/homestart/homestart.key
-   ```
-7. Create `/opt/homestart/homestart.ini` with permanent paths:
-   ```ini
-   [database]
-   file = /var/lib/homestart/homestart.db
+   Add `--import data` to take over the database, uploaded icons and encryption key of a development
+   installation (first installation only; an existing production database is never replaced).
 
-   [server]
-   host = 0.0.0.0
-   port = 8000
+The script is safe to run again and is also used for updates. It:
 
-   [security]
-   session_timeout_minutes = 480
-   max_failed_logins = 5
-   lockout_minutes = 15
-   key_file = /etc/homestart/homestart.key
+- creates the service account `homestart` and the folders
 
-   [storage]
-   icons_dir = /var/lib/homestart/icons
+  | Folder | Contents | Owner, mode |
+  |---|---|---|
+  | `/opt/homestart` | program (`backend/`, `deploy/`, `frontend/dist/`), `venv/`, `homestart.ini` | root, read-only for the service |
+  | `/var/lib/homestart` | `homestart.db`, `icons/`, `cache/` | homestart, 750 |
+  | `/etc/homestart` | `homestart.key`, `firewall.nft` | root:homestart, 750 (key 640) |
+  | `/var/backups/homestart` | `daily/`, `monthly/` database copies | homestart, 700 |
 
-   [mqtt]
-   enabled = true
-   host = localhost
-   port = 1883
+- installs the Python dependencies into `/opt/homestart/venv` and compiles the bytecode;
+- writes `/opt/homestart/homestart.ini` with these paths when it does not exist yet (later edits are kept);
+- creates the encryption key when there is none;
+- installs and starts `homestart.service` and the daily `homestart-backup.timer`, makes a first backup and
+  checks that HomeStart answers on port 8000;
+- with `--firewall`: `homestart-firewall.service` loads its own nftables table (`inet homestart`) that allows
+  ports 8000 and 1883 only from the server's local network (detected from its address) and from the server
+  itself. Rules of other programs are not touched; `sudo systemctl disable --now homestart-firewall` removes it.
 
-   [network]
-   scan_subnet = 192.168.1.0/24
+Useful commands:
 
-   [backup]
-   dir = /var/backups/homestart
-   daily_keep = 7
-   monthly_keep = 5
-   ```
-   Make it readable for the service: `sudo chmod 644 /opt/homestart/homestart.ini`.
-8. Install and start the service:
-   ```sh
-   sudo cp /opt/homestart/deploy/homestart.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now homestart
-   sudo journalctl -u homestart -f        # shows which ini file and database were loaded
-   ```
-9. Install the daily database backup (see *Backups* below):
-   ```sh
-   sudo cp /opt/homestart/deploy/homestart-backup.service /opt/homestart/deploy/homestart-backup.timer /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now homestart-backup.timer
-   sudo systemctl start homestart-backup.service   # first copy right away
-   sudo journalctl -u homestart-backup             # result of each run
-   ```
-10. Allow port 8000 only from the local network, e.g. with ufw:
-   ```sh
-   sudo ufw allow from 192.168.1.0/24 to any port 8000 proto tcp
-   ```
+```sh
+sudo systemctl status homestart            # state of the service
+sudo journalctl -u homestart -f            # log; shows which ini file and database were loaded
+sudo systemctl restart homestart           # after editing homestart.ini
+sudo journalctl -u homestart-backup        # result of each backup
+sudo nft list table inet homestart         # firewall rules
+```
 
-Open `http://<server-address>:8000` in a browser.
+Open `http://<server-address>:8000` and change the `admin` password under Configuration → My account.
 
 ### Updating
 
-Copy the new files, run `pip install -r backend/requirements.txt` in the venv again and
-`sudo systemctl restart homestart`. Database migrations run automatically.
+Build the frontend, update the project folder on the server and run `sudo bash deploy/install.sh` again.
+Database migrations run automatically when the service starts.
 
 ### Backups
 

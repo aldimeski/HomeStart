@@ -1,0 +1,15 @@
+[Unit]
+Description=HomeStart firewall rules (ports 8000 and 1883 from the local network only)
+# After nftables.service: its "flush ruleset" would otherwise remove these rules.
+After=nftables.service
+Before=network-pre.target homestart.service mosquitto.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/homestart/firewall.nft
+ExecStop=/usr/sbin/nft delete table inet homestart
+
+[Install]
+WantedBy=multi-user.target
