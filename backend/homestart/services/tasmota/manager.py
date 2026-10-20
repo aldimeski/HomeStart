@@ -7,6 +7,7 @@ Static device data (topic, IP, MAC, firmware, names) is stored in the database; 
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
@@ -17,7 +18,7 @@ from ...config import Settings
 from ...db import SessionLocal
 from ...models import AppSetting, TasmotaDevice, utcnow
 from ..secret_box import SecretBox
-from . import http_api
+from . import http_api, zigbee
 from .console import DeviceConsole
 from .http_api import AuthRequired, Credentials, DeviceUnreachable
 from .mqtt_link import MqttLink, MqttUnavailable
@@ -35,11 +36,12 @@ from .parsing import (
     parse_status,
     sensor_readings,
 )
+from .zigbee import ZigbeeNetwork
 
 log = logging.getLogger("homestart.tasmota")
 
 POWER_TIMEOUT_SECONDS = 4.0
-STATUS_QUERY_SPACING_SECONDS = 0.15
+ZIGBEE_POWER_TIMEOUT_SECONDS = 6.0  # the bridge forwards the command over Zigbee and waits for the deviceSTATUS_QUERY_SPACING_SECONDS = 0.15
 NOTIFY_DELAY_SECONDS = 0.15
 LAST_SEEN_WRITE_INTERVAL = timedelta(minutes=5)
 LISTENER_QUEUE_SIZE = 500
@@ -89,6 +91,8 @@ class TasmotaManager:
         self._query_queue: asyncio.Queue[str] = asyncio.Queue()
         self._tasks: list[asyncio.Task] = []
         self.consoles: dict[int, DeviceConsole] = {}
+        self.zigbee: dict[int, ZigbeeNetwork] = {}  # by bridge device id
+        self._zigbee_waiters: dict[tuple[str, str], list[asyncio.Future]] = {}
 
     # --- lifecycle ---------------------------------------------------------------
 
@@ -96,6 +100,8 @@ class TasmotaManager:
         with SessionLocal() as db:
             for device in db.scalars(select(TasmotaDevice)).all():
                 self._register(device)
+                if zigbee.is_bridge_firmware(device.firmware) and not device.removed:
+                    self.zigbee[device.id] = ZigbeeNetwork()
 
     async def start(self) -> None:
         self.load()
@@ -123,6 +129,8 @@ class TasmotaManager:
                 for device in list(self.devices.values()):
                     if device.mqtt_topic and not device.removed:
                         await self.publish(f"cmnd/{device.mqtt_topic}/STATE")
+                        if device.id in self.zigbee:
+                            await self.publish(f"cmnd/{device.mqtt_topic}/ZbInfo")
             except MqttUnavailable as exc:
                 log.warning("Could not query device state: %s", exc)
 
@@ -134,6 +142,22 @@ class TasmotaManager:
             except MqttUnavailable:
                 self._queried_topics.discard(topic)
             await asyncio.sleep(STATUS_QUERY_SPACING_SECONDS)
+
+    def _publish_soon(self, topic: str, payload: str = "", delay: float = 0) -> None:
+        """Publishes from synchronous message handling; a lost broker only means the answer is missing."""
+
+        async def send() -> None:
+            await asyncio.sleep(delay)
+            try:
+                await self.publish(topic, payload)
+            except MqttUnavailable:
+                pass
+
+        try:
+            self._tasks.append(asyncio.get_running_loop().create_task(send()))
+        except RuntimeError:
+            return
+        self._tasks = [task for task in self._tasks if not task.done()]
 
     async def publish(self, topic: str, payload: str = "") -> None:
         if not self.mqtt:
@@ -199,6 +223,9 @@ class TasmotaManager:
     def _apply(self, device: TasmotaDevice, update: Update, online: bool | None = None) -> TasmotaDevice:
         changed = False
         names = json.dumps(update.friendly_names) if update.friendly_names is not None else None
+        if update.firmware and device.firmware and device.firmware.startswith(f"{update.firmware}("):
+            # Discovery reports "15.1.0" while Status 0 reports "15.1.0(release-zbbrdgpro)"; the build name matters.
+            update.firmware = None
         for attr, value in (
             ("host", update.host),
             ("mac", update.mac),
@@ -220,6 +247,8 @@ class TasmotaManager:
             changed = True
         if changed:
             device = self._save(device)
+        if zigbee.is_bridge_firmware(device.firmware) and not device.removed:
+            self._zigbee_network(device)
 
         live = self.live.setdefault(device.id, LiveState())
         live.power.update(update.power)
@@ -275,6 +304,12 @@ class TasmotaManager:
                     if online:
                         self._query_status(device_topic)
                 return
+            if suffix == "SENSOR" and self._handle_zigbee_payload(device_topic, payload, retained):
+                return
+            if suffix == "RESULT":
+                if device_topic in self.by_topic:
+                    self._handle_zigbee_payload(device_topic, payload, retained)
+                return
             parser = {"STATE": parse_state, "SENSOR": parse_sensor}.get(suffix)
             if parser:
                 device = self._ensure_topic(device_topic, retained)
@@ -289,6 +324,8 @@ class TasmotaManager:
             return
 
         if suffix == "RESULT":
+            if self._handle_zigbee_payload(device_topic, payload, retained):
+                return
             update = parse_result(payload)
         elif suffix.startswith("POWER"):
             update = parse_power_message(suffix, payload)
@@ -311,6 +348,104 @@ class TasmotaManager:
             device = self._find(mac=normalize_mac(mac_id))
             if device and not device.removed and self.live[device.id].sensors is None:
                 self._apply(device, parse_discovery_sensors(payload))
+
+    # --- Zigbee bridges ------------------------------------------------------------------
+
+    def _zigbee_network(self, device: TasmotaDevice) -> ZigbeeNetwork:
+        network = self.zigbee.get(device.id)
+        if network is None:
+            network = self.zigbee[device.id] = ZigbeeNetwork()
+            log.info("%s is a Zigbee bridge", device.mqtt_topic or device.host)
+            if device.mqtt_topic:
+                self._publish_soon(f"cmnd/{device.mqtt_topic}/ZbInfo")
+        return network
+
+    def _handle_zigbee_payload(self, device_topic: str, payload: bytes, retained: bool) -> bool:
+        """Zigbee device data, ZbState and ZbMap; returns False for payloads that are not about Zigbee."""
+        data = decode_json(payload)
+        if not data:
+            return False
+        entries = zigbee.device_entries(data)
+        zb_keys = [key for key in data if key.startswith("Zb")]
+        if not entries and not zb_keys:
+            return False
+        if retained:
+            return True  # old Zigbee values would overwrite what ZbInfo reports
+        device = self._ensure_topic(device_topic, retained)
+        if device is None:
+            return True
+        network = self._zigbee_network(device)
+        now = time.time()
+
+        for short in network.apply_entries(entries):
+            values = network.devices[short].values
+            if "Power" in values:
+                for future in self._zigbee_waiters.get((device_topic, short), []):
+                    if not future.done():
+                        future.set_result(values["Power"])
+        if isinstance(data.get("ZbState"), dict) and network.apply_state(data["ZbState"], now):
+            # A device joined or rejoined: read the list again once it has introduced itself.
+            self._publish_soon(f"cmnd/{device_topic}/ZbInfo", delay=3)
+        if isinstance(data.get("ZbMap"), dict):
+            network.apply_map_page(data["ZbMap"], now)
+
+        self.live.setdefault(device.id, LiveState()).online = True
+        self._mark_dirty(device.id)
+        return True
+
+    def _bridge(self, device_id: int) -> tuple[TasmotaDevice, ZigbeeNetwork]:
+        device = self.get(device_id)
+        network = self.zigbee.get(device.id)
+        if network is None:
+            raise DeviceError("This device is not a Zigbee bridge", 404)
+        if not self.uses_mqtt(device):
+            raise DeviceError("Zigbee devices are controlled over MQTT, which is not connected", 503)
+        if self.live[device.id].online is False:
+            raise DeviceError("The Zigbee bridge is offline", 409)
+        return device, network
+
+    async def zigbee_power(self, device_id: int, short: str, action: str) -> dict[str, Any]:
+        device, network = self._bridge(device_id)
+        zb_device = network.devices.get(short)
+        if zb_device is None:
+            raise DeviceError("Zigbee device not found", 404)
+        if zb_device.kind != "light":
+            raise DeviceError("This Zigbee device cannot be switched", 400)
+        if action == "toggle":
+            action = "off" if zb_device.values.get("Power") else "on"
+
+        key = (device.mqtt_topic, short)
+        future = asyncio.get_running_loop().create_future()
+        self._zigbee_waiters.setdefault(key, []).append(future)
+        try:
+            command = json.dumps({"Device": short, "Send": {"Power": "On" if action == "on" else "Off"}})
+            await self.publish(f"cmnd/{device.mqtt_topic}/ZbSend", command)
+            await asyncio.wait_for(future, ZIGBEE_POWER_TIMEOUT_SECONDS)
+        except TimeoutError:
+            raise DeviceError("The Zigbee device did not confirm the command", 504) from None
+        finally:
+            self._zigbee_waiters[key].remove(future)
+        return self.view(device)
+
+    async def zigbee_join(self, device_id: int, enabled: bool, username: str) -> dict[str, Any]:
+        device, network = self._bridge(device_id)
+        await self.publish(f"cmnd/{device.mqtt_topic}/ZbPermitJoin", "1" if enabled else "0")
+        now = time.time()
+        network.join_until = now + zigbee.JOIN_SECONDS if enabled else None
+        log.info("Zigbee pairing on %s %s by %s", device.mqtt_topic, "opened" if enabled else "closed", username)
+        if enabled:
+            # Browsers count down themselves; this update tells them that pairing has closed.
+            asyncio.get_running_loop().call_later(zigbee.JOIN_SECONDS + 1, self._mark_dirty, device.id)
+        self._mark_dirty(device.id)
+        return self.view(device)
+
+    async def zigbee_map(self, device_id: int) -> dict[str, Any]:
+        device, network = self._bridge(device_id)
+        await self.publish(f"cmnd/{device.mqtt_topic}/ZbMap")
+        network.start_map_scan(time.time())
+        asyncio.get_running_loop().call_later(zigbee.MAP_SCAN_SECONDS + 1, self._mark_dirty, device.id)
+        self._mark_dirty(device.id)
+        return self.view(device)
 
     def _resolve_power_waiters(self, topic: str, update: Update) -> None:
         waiters = self._power_waiters.get(topic)
@@ -410,6 +545,7 @@ class TasmotaManager:
             "wifi": live.wifi,
             "uptime": live.uptime,
             "web_url": web_url,
+            "zigbee": self.zigbee[device.id].view(time.time()) if device.id in self.zigbee else None,
         }
 
     def visible_devices(self) -> list[TasmotaDevice]:
@@ -539,6 +675,8 @@ class TasmotaManager:
             if self.uses_mqtt(device):
                 await self.publish(f"cmnd/{device.mqtt_topic}/STATE")
                 await self.publish(f"cmnd/{device.mqtt_topic}/Status", "10")
+                if device.id in self.zigbee:
+                    await self.publish(f"cmnd/{device.mqtt_topic}/ZbInfo")
             elif device.host and not device.auth_required:
                 http_devices.append(device)
 
@@ -656,5 +794,6 @@ class TasmotaManager:
                 db.execute(delete(TasmotaDevice).where(TasmotaDevice.id == device.id))
                 db.commit()
             self._forget(device.id)
+        self.zigbee.pop(device_id, None)
         self._broadcast({"type": "removed", "id": device_id})
         log.info("Removed Tasmota device %s", device.mqtt_topic or device.host)

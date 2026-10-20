@@ -9,6 +9,7 @@ import MdiIcon from '../components/mdi-icon.vue'
 import TasmotaDeviceCard from '../components/tasmota-device-card.vue'
 import DeviceDialog from '../components/device-dialog.vue'
 import DeviceConsole from '../components/device-console.vue'
+import ZigbeeSection from '../components/zigbee-section.vue'
 
 const MAX_CONSOLES = 4
 
@@ -64,6 +65,7 @@ const groups = computed(() => {
   }
   return [...map.entries()].map(([name, devices]) => ({ name, devices }))
 })
+const bridges = computed(() => tasmota.state.devices.filter((device) => device.zigbee))
 const groupNames = computed(() => groups.value.map((g) => g.name).filter(Boolean))
 const hasNamedGroups = computed(() => groupNames.value.length > 0)
 
@@ -165,6 +167,8 @@ onBeforeUnmount(() => {
             />
           </div>
         </section>
+
+        <ZigbeeSection v-for="bridge in bridges" :key="`zigbee-${bridge.id}`" :bridge="bridge" :is-admin="session.isAdmin.value" />
       </div>
 
       <aside

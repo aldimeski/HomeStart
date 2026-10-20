@@ -50,6 +50,10 @@ const summary = computed(() => {
   if (power) picked.push(formatValue(power.value, power.unit))
   if (picked.length) return picked.join(' · ')
 
+  if (props.device.zigbee) {
+    const count = props.device.zigbee.devices.length
+    return `Zigbee bridge · ${count} device${count === 1 ? '' : 's'}`
+  }
   if (offline.value || !props.device.channels.some((c) => c.state)) return 'No data'
   const channels = props.device.channels
   if (channels.length === 1) return channels[0].state === 'ON' ? 'Power on' : 'Power off'

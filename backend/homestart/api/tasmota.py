@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field, field_validator
 
 from ..db import SessionLocal
@@ -79,6 +79,17 @@ def _icon_reference(value: str | None) -> str | None:
 class PowerRequest(BaseModel):
     channel: int = Field(default=1, ge=1, le=32)
     action: Literal["on", "off", "toggle"]
+
+
+class ZigbeePowerRequest(BaseModel):
+    action: Literal["on", "off", "toggle"]
+
+
+class ZigbeeJoinRequest(BaseModel):
+    enabled: bool
+
+
+ZIGBEE_SHORT = r"^0x[0-9A-F]{4}$"
 
 
 class LockRequest(BaseModel):
@@ -166,6 +177,41 @@ def set_lock(
     try:
         return manager.set_lock(device_id, body.channel, body.locked, user.username)
     except DeviceError as exc:
+        _raise(exc)
+
+
+@router.post("/api/tasmota/devices/{device_id}/zigbee/{short}/power")
+async def zigbee_power(
+    device_id: int,
+    body: ZigbeePowerRequest,
+    short: str = Path(pattern=ZIGBEE_SHORT),
+    _: User = Depends(get_current_user),
+    manager: TasmotaManager = Depends(get_manager),
+):
+    try:
+        return await manager.zigbee_power(device_id, short, body.action)
+    except (DeviceError, MqttUnavailable) as exc:
+        _raise(exc)
+
+
+@router.put("/api/tasmota/devices/{device_id}/zigbee/join")
+async def zigbee_join(
+    device_id: int,
+    body: ZigbeeJoinRequest,
+    user: User = Depends(require_admin),
+    manager: TasmotaManager = Depends(get_manager),
+):
+    try:
+        return await manager.zigbee_join(device_id, body.enabled, user.username)
+    except (DeviceError, MqttUnavailable) as exc:
+        _raise(exc)
+
+
+@router.post("/api/tasmota/devices/{device_id}/zigbee/map", status_code=status.HTTP_202_ACCEPTED)
+async def zigbee_map(device_id: int, _: User = Depends(require_admin), manager: TasmotaManager = Depends(get_manager)):
+    try:
+        return await manager.zigbee_map(device_id)
+    except (DeviceError, MqttUnavailable) as exc:
         _raise(exc)
 
 

@@ -97,6 +97,18 @@ export const tasmota = {
     upsert(await api<TasmotaDevice>('POST', `/api/tasmota/devices/${id}/power`, { channel, action }))
   },
 
+  async zigbeePower(id: number, short: string, action: 'on' | 'off' | 'toggle') {
+    upsert(await api<TasmotaDevice>('POST', `/api/tasmota/devices/${id}/zigbee/${short}/power`, { action }))
+  },
+
+  async zigbeeJoin(id: number, enabled: boolean) {
+    upsert(await api<TasmotaDevice>('PUT', `/api/tasmota/devices/${id}/zigbee/join`, { enabled }))
+  },
+
+  async zigbeeMap(id: number) {
+    upsert(await api<TasmotaDevice>('POST', `/api/tasmota/devices/${id}/zigbee/map`))
+  },
+
   async setLock(id: number, channel: number, locked: boolean) {
     upsert(await api<TasmotaDevice>('PUT', `/api/tasmota/devices/${id}/lock`, { channel, locked }))
   },

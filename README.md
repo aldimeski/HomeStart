@@ -22,6 +22,11 @@ consoles, and the **Škoda** vehicle overview (phases 1–5 of the specification
 - **Icons on devices and switches**: the same icons as ShoLink (library, device icons incl. a gas boiler,
   uploaded icons); a switch icon lights up while the switch is on (the glass of a bulb turns yellow, the flame
   of the gas boiler orange, other icons turn yellow; uploaded images are greyed out while off)
+- **Zigbee**: a Tasmota Zigbee bridge is recognized automatically (by its firmware build or its Zigbee
+  messages). Its devices appear in their own section: lights with an on/off switch, sensors with their values,
+  remotes and sensors with battery level; link quality and last report for each. A network map (bridge,
+  routers, end devices, link quality) and, for administrators, a *Join* switch that opens pairing for 60 s
+  and a *Scan network* button for a new map
 - **Switch locks**: an administrator can lock any switch; nobody (administrators included) can switch it until
   an administrator unlocks it; users see the lock but cannot change it
 - **TasmoSiz consoles**: the live log of up to 4 devices at once in a column to the right of the devices
@@ -231,6 +236,11 @@ The cache folder (`cache_dir`) does not need a backup.
   *Configuration → Devices*. The login is stored encrypted (AES-256-GCM) and is not needed for MQTT.
 - Switch names set in HomeStart are stored only in HomeStart; the device keeps its own FriendlyName, which is
   shown when the HomeStart name is empty.
+- **Zigbee bridges** must use the default Zigbee2Tasmota topics: device data on `tele/<bridge>/SENSOR`
+  (SetOption89 off). Names (SetOption83) and the `ZbReceived` wrapper (SetOption100) may be on or off.
+  Zigbee data is kept in memory and read again with `ZbInfo` at start-up and on *Refresh*. Lights are switched
+  with `ZbSend`; the switch waits up to 6 s for the device to report its new state. The Zigbee network key
+  is never read or shown.
 - **Switch locks** are enforced by the server for the switches in HomeStart and for `Power` commands in the
   console (also inside `Backlog`). They cannot stop the device's own button, the Tasmota web page, openHAB or
   other MQTT clients.

@@ -19,6 +19,7 @@ FastAPI backend (python -m homestart, port 8000)
    │    parsing.py    Tasmota payloads → state updates (old split STATUSn and combined STATUS0)
    │    manager.py    device registry, live state, power commands, scan, change notifications
    │    console.py    device consoles: web log polling (/cs), MQTT fallback, commands
+   │    zigbee.py     Zigbee bridges: device objects, ZbState (pairing), ZbMap pages → network map
    │    http_api.py   Tasmota /cm and /cs HTTP interface, subnet scan
    ├─ services/skoda/
    │    client.py     the only user of the myskoda library: read-only calls, data → plain dicts
@@ -98,6 +99,18 @@ also shows the message if the frame has not loaded within 15 seconds.
   icons in use by a device or switch cannot be deleted. Switch icons get the class `icon-on` while on: builtin
   icons mark glowing parts with `lit`, `lit-line` or `flame`; MDI icons are split into glowing and plain layers
   by `frontend/src/icons/switch-icons.ts` (bulbs and lamps glow in part, other icons completely).
+- **Zigbee bridges**: a device whose firmware build contains "zigbee"/"zbbrdg", or which sends Zigbee device
+  objects (`{"<name or 0xSHORT>": {"Device": "0x…", …}}`, optionally inside `ZbReceived`), gets a
+  `ZigbeeNetwork` in memory and is asked `ZbInfo` (also on MQTT connect and Refresh). SENSOR and RESULT
+  payloads with Zigbee content are not treated as the bridge's own sensors. Kinds: *light* when ZbInfo lists an
+  on/off or light cluster in `Config` (O../L..), *sensor* when known measurements are present, *remote* for
+  battery devices without either. `ZbSend {"Device","Send":{"Power"}}` waits for the device's report.
+  `ZbPermitJoin 1/0` (admin) opens pairing for 60 s; ZbState 20/21/22 keep the state in sync and ZbState 30/34
+  (device announced) triggers a new ZbInfo. `ZbMap` (admin) collects the result pages for 30 s into nodes
+  (coordinator, routers, end devices) and links with the best link quality of both directions. The bridge's
+  view carries all of this in its `zigbee` field, so the existing WebSocket updates cover it.
+- **Firmware**: discovery reports only the version ("15.1.0"); it no longer replaces a full build name from
+  Status 0 ("15.1.0(release-zbbrdgpro)").
 - **Switch locks**: `locked_relays` (JSON list of channel numbers) is set by administrators
   (`PUT /api/tasmota/devices/{id}/lock`). `set_power` refuses a locked channel with 423 for every role, and
   the console refuses `Power<n>` / `Power0` commands with a payload (also inside `Backlog`) for locked

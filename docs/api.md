@@ -33,6 +33,9 @@ the header `X-HomeStart: 1`.
 | PUT | `/api/tasmota/devices/{id}` | admin | `{name, group_name, icon?, relay_names?, relay_icons?}` – lists by relay position; empty name = device name; omitted = unchanged; `icon` null/"" removes it |
 | DELETE | `/api/tasmota/devices/{id}` | admin | Remove device |
 | POST | `/api/tasmota/devices/{id}/power` | user | `{channel, action: on\|off\|toggle}` → device after confirmation; 423 if the switch is locked |
+| POST | `/api/tasmota/devices/{id}/zigbee/{short}/power` | user | `{action: on\|off\|toggle}` for a Zigbee light (`short` like `0x6D57`) → bridge after the device's report |
+| PUT | `/api/tasmota/devices/{id}/zigbee/join` | admin | `{enabled}` – open Zigbee pairing for 60 s, or close it |
+| POST | `/api/tasmota/devices/{id}/zigbee/map` | admin | Start a Zigbee network map scan; results arrive over the WebSocket |
 | PUT | `/api/tasmota/devices/{id}/lock` | admin | `{channel, locked}` – lock or unlock a switch |
 | POST | `/api/tasmota/refresh` | user | Ask all devices for current state (answers arrive over the WebSocket) |
 | POST | `/api/tasmota/scan` | admin | HTTP scan of the subnet → `{subnet, found, new, auth_required}` |

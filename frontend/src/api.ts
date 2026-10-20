@@ -109,6 +109,41 @@ export interface SensorReading {
   unit: string
 }
 
+export interface ZigbeeDevice {
+  short: string
+  name: string | null
+  display_name: string
+  ieee: string | null
+  model: string | null
+  manufacturer: string | null
+  kind: 'light' | 'sensor' | 'remote' | 'other'
+  power: boolean | null
+  dimmer: number | null
+  reachable: boolean | null
+  battery: number | null
+  link_quality: number | null
+  /** Epoch seconds. */
+  last_seen: number | null
+  readings: { name: string; value: number | string; unit: string }[]
+}
+
+export interface ZigbeeMapNode {
+  short: string
+  type: 'coordinator' | 'router' | 'end_device'
+  name: string | null
+  known: boolean
+}
+
+export interface ZigbeeNetwork {
+  devices: ZigbeeDevice[]
+  join_open: boolean
+  /** null while closed, or when open until the bridge restarts. */
+  join_seconds_left: number | null
+  map: { nodes: ZigbeeMapNode[]; links: { a: string; b: string; link_quality: number | null }[] } | null
+  map_scanned_at: number | null
+  map_scanning: boolean
+}
+
 export interface TasmotaDevice {
   id: number
   name: string | null
@@ -132,6 +167,8 @@ export interface TasmotaDevice {
   wifi: { rssi?: number; signal?: number } | null
   uptime: string | null
   web_url: string | null
+  /** Set for Zigbee bridges. */
+  zigbee: ZigbeeNetwork | null
 }
 
 export interface ConsoleLine {
