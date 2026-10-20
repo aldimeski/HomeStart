@@ -76,6 +76,8 @@ cp homestart_default.ini homestart.ini
 | `[storage]` | `cache_dir` | `data/cache` | Downloaded vehicle pictures and map tiles (safe to delete) |
 | `[mqtt]` | `enabled`, `host`, `port` | `true`, `localhost`, `1883` | MQTT broker used by TasmoSiz |
 | `[network]` | `scan_subnet` | empty | Subnet for "Scan network"; empty = the server's own /24 |
+| `[backup]` | `dir` | `data/backups` | Database copies (`daily/` and `monthly/`) |
+| `[backup]` | `daily_keep`, `monthly_keep` | `7`, `5` | Keep daily copies for 7 days and monthly copies for 5 months |
 | `[map]` | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Map tiles for the Škoda page |
 
 The database and its folder are created automatically. Schema changes are applied at start-up with Alembic.
@@ -135,9 +137,10 @@ The frontend is built once on a development machine; the server needs only Pytho
 3. Create the service account and folders:
    ```sh
    sudo useradd --system --home /var/lib/homestart --shell /usr/sbin/nologin homestart
-   sudo mkdir -p /opt/homestart /var/lib/homestart
-   sudo chown homestart:homestart /var/lib/homestart
+   sudo mkdir -p /opt/homestart /var/lib/homestart /var/backups/homestart
+   sudo chown homestart:homestart /var/lib/homestart /var/backups/homestart
    sudo chmod 750 /var/lib/homestart
+   sudo chmod 700 /var/backups/homestart
    ```
 4. Copy the application to `/opt/homestart` (`backend/`, `deploy/` and `frontend/dist/`; `node_modules`
    and `data/` are not needed), for example:
@@ -181,6 +184,11 @@ The frontend is built once on a development machine; the server needs only Pytho
 
    [network]
    scan_subnet = 192.168.1.0/24
+
+   [backup]
+   dir = /var/backups/homestart
+   daily_keep = 7
+   monthly_keep = 5
    ```
    Make it readable for the service: `sudo chmod 644 /opt/homestart/homestart.ini`.
 8. Install and start the service:
@@ -190,7 +198,15 @@ The frontend is built once on a development machine; the server needs only Pytho
    sudo systemctl enable --now homestart
    sudo journalctl -u homestart -f        # shows which ini file and database were loaded
    ```
-9. Allow port 8000 only from the local network, e.g. with ufw:
+9. Install the daily database backup (see *Backups* below):
+   ```sh
+   sudo cp /opt/homestart/deploy/homestart-backup.service /opt/homestart/deploy/homestart-backup.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now homestart-backup.timer
+   sudo systemctl start homestart-backup.service   # first copy right away
+   sudo journalctl -u homestart-backup             # result of each run
+   ```
+10. Allow port 8000 only from the local network, e.g. with ufw:
    ```sh
    sudo ufw allow from 192.168.1.0/24 to any port 8000 proto tcp
    ```
@@ -204,14 +220,32 @@ Copy the new files, run `pip install -r backend/requirements.txt` in the venv ag
 
 ### Backups
 
-The database is a single file. A safe copy while the service is running:
+`homestart-backup.timer` runs `python -m homestart.backup` every day at 03:00. It copies the database with
+SQLite's backup API (safe while HomeStart runs), checks the copy (`PRAGMA integrity_check`) and keeps:
+
+- **daily copies** of the last 7 days: `/var/backups/homestart/daily/homestart-YYYY-MM-DD.db`
+- **monthly copies** of the last 5 months: `/var/backups/homestart/monthly/homestart-YYYY-MM.db`. The monthly
+  copy is the first copy of the month, normally the one made on the 1st; if the server was off on the 1st,
+  the timer catches up at the next start (`Persistent=true`), so no month is missing.
+
+Older copies are deleted by the same run. The numbers can be changed with `daily_keep` and `monthly_keep`
+in `[backup]`. Copies are readable only by the service account, because they contain password hashes and
+encrypted logins. A copy can also be made at any time with `sudo systemctl start homestart-backup.service`.
+
+The copies stay on the same disk as the database. To survive a disk failure, copy `/var/backups/homestart`
+to another machine or disk from time to time, together with `/etc/homestart/homestart.key` (without the key,
+stored Tasmota and Škoda logins in a copy cannot be read), `/opt/homestart/homestart.ini` and
+`/var/lib/homestart/icons/`. The cache folder (`cache_dir`) does not need a backup.
+
+Restoring a copy:
 
 ```sh
-sqlite3 /var/lib/homestart/homestart.db ".backup '/var/backups/homestart-$(date +%F).db'"
+sudo systemctl stop homestart
+sudo cp /var/backups/homestart/daily/homestart-2026-10-20.db /var/lib/homestart/homestart.db
+sudo rm -f /var/lib/homestart/homestart.db-wal /var/lib/homestart/homestart.db-shm
+sudo chown homestart:homestart /var/lib/homestart/homestart.db
+sudo systemctl start homestart
 ```
-
-Also back up `/var/lib/homestart/icons/`, `/opt/homestart/homestart.ini` and `/etc/homestart/homestart.key`.
-The cache folder (`cache_dir`) does not need a backup.
 
 ## ShoLink notes
 

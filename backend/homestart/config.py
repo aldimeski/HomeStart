@@ -51,6 +51,14 @@ scan_subnet =
 [map]
 # Map tiles for the Škoda module, fetched by the server and cached in cache_dir.
 tile_url = https://tile.openstreetmap.org/{z}/{x}/{y}.png
+
+[backup]
+# Database copies made by "python -m homestart.backup" (homestart-backup.timer runs it daily).
+dir = data/backups
+# Daily copies of the last N days.
+daily_keep = 7
+# Monthly copies (the first copy of each month, normally made on the 1st) of the last N months.
+monthly_keep = 5
 """
 
 
@@ -77,6 +85,9 @@ class Settings:
     scan_subnet: ipaddress.IPv4Network | None
     cache_dir: Path
     map_tile_url: str
+    backup_dir: Path
+    backup_daily_keep: int
+    backup_monthly_keep: int
 
 
 def default_app_dir() -> Path:
@@ -170,6 +181,9 @@ def load_settings(app_dir: Path | None = None) -> Settings:
         scan_subnet=scan_subnet,
         cache_dir=_resolve(app_dir, parser.get("storage", "cache_dir", fallback="data/cache")),
         map_tile_url=tile_url,
+        backup_dir=_resolve(app_dir, parser.get("backup", "dir", fallback="data/backups")),
+        backup_daily_keep=_get_int(parser, "backup", "daily_keep", 7, ini_file),
+        backup_monthly_keep=_get_int(parser, "backup", "monthly_keep", 5, ini_file),
     )
     log.info("Loaded settings from %s", ini_file)
     log.info("Database file: %s", settings.db_file)

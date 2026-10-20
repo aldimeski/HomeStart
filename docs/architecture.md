@@ -6,6 +6,7 @@ Browser (Vue 3 SPA)
    ▼
 FastAPI backend (python -m homestart, port 8000)
    ├─ config.py      homestart.ini / homestart_default.ini
+   ├─ backup.py      python -m homestart.backup: daily and monthly database copies (homestart-backup.timer)
    ├─ security.py    Argon2id, server-side sessions, login lockout
    ├─ api/auth.py    login, logout, current user
    ├─ api/users.py   user management (admin), own password and settings
@@ -147,3 +148,12 @@ also shows the message if the frame has not loaded within 15 seconds.
 - **Map**: Leaflet (bundled, no CDN) loads tiles from `/api/map/tiles/{z}/{x}/{y}.png`; the server fetches them
   from `[map] tile_url`, at most two at a time, and caches them for 30 days. In dark mode tiles are inverted
   with a CSS filter.
+
+## Backups
+
+`homestart.backup` is a separate entry point run by `homestart-backup.timer` (daily, `Persistent=true`). It uses
+`sqlite3.Connection.backup`, switches the copy to `journal_mode=DELETE` so it is one self-contained file, checks
+it with `PRAGMA integrity_check`, writes it under a temporary name and renames it (mode 0600, folders 0700).
+The first copy of a month is also stored as the monthly copy. Retention is by file name: daily copies whose
+date lies within the last `daily_keep` days, and the newest `monthly_keep` monthly copies. A failed run exits
+with status 1, which systemd records.

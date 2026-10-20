@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily HomeStart database backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# A run missed while the server was off happens at the next start, so the monthly copy is not lost.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
