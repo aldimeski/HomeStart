@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -113,3 +113,35 @@ class AppSetting(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value_enc: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class SkodaAccount(Base):
+    """A user's MyŠkoda login. Everything secret is encrypted with the key file, like the Tasmota login."""
+
+    __tablename__ = "skoda_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    username_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    password_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    # Lets later refreshes skip the full password login.
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text)
+    last_sync: Mapped[datetime | None] = mapped_column(DateTime)  # last successful refresh
+    last_attempt: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class VehicleCache(Base):
+    """Last vehicle data received from Škoda, shown when the servers cannot be reached."""
+
+    __tablename__ = "vehicles_cache"
+    __table_args__ = (UniqueConstraint("account_id", "vin"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("skoda_accounts.id", ondelete="CASCADE"), nullable=False)
+    vin: Mapped[str] = mapped_column(String(17), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(128))
+    data_json: Mapped[str] = mapped_column(Text, nullable=False)
+    image_file: Mapped[str | None] = mapped_column(String(80))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

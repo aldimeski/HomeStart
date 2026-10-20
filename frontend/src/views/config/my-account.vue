@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { api, type Theme, type UserSettings } from '../../api'
 import { session } from '../../stores/session'
+import SkodaAccountCard from '../../components/skoda-account-card.vue'
 
 const passwords = reactive({ current: '', next: '', confirm: '' })
 const passwordMessage = ref('')
@@ -132,5 +133,6 @@ async function saveSetting(patch: Partial<UserSettings>) {
       </fieldset>
       <p v-if="settingsError" class="error-box mt-4" role="alert">{{ settingsError }}</p>
     </section>
+    <SkodaAccountCard />
   </div>
 </template>

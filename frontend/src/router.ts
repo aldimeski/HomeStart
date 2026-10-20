@@ -1,11 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { mdiCarOutline } from '@mdi/js'
 import { session } from './stores/session'
 import AppLayout from './layouts/app-layout.vue'
 import LoginView from './views/login-view.vue'
 import HomeView from './views/home-view.vue'
 import LinkFrameView from './views/link-frame-view.vue'
-import ComingSoonView from './views/coming-soon-view.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -18,7 +16,7 @@ export const router = createRouter({
         { path: '', component: HomeView },
         { path: 'link/:id', component: LinkFrameView, props: true },
         { path: 'tasmosiz', component: () => import('./views/tasmosiz-view.vue') },
-        { path: 'skoda', component: ComingSoonView, props: { title: 'Škoda', icon: mdiCarOutline } },
+        { path: 'skoda', component: () => import('./views/skoda-view.vue') },
         {
           path: 'config',
           component: () => import('./views/config/config-layout.vue'),

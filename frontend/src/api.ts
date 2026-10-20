@@ -148,3 +148,46 @@ export interface ScanResult {
   new: number
   auth_required: number
 }
+
+export type OpenState = 'open' | 'closed' | 'unsupported' | 'unknown'
+export type CarSide = 'front_left' | 'front_right' | 'rear_left' | 'rear_right'
+
+export interface SkodaVehicle {
+  vin: string
+  name?: string
+  title?: string
+  model?: string
+  model_year?: string
+  license_plate?: string | null
+  doors?: Record<CarSide, OpenState>
+  windows?: Record<CarSide, OpenState>
+  windows_overall?: OpenState
+  trunk?: OpenState
+  bonnet?: OpenState
+  sunroof?: OpenState
+  lock?: 'locked' | 'unlocked' | 'unknown'
+  lights?: string
+  position?: { latitude: number; longitude: number; address: string | null }
+  mileage_km?: number | null
+  fuel_percent?: number | null
+  battery_percent?: number | null
+  range_km?: number | null
+  engine_type?: string | null
+  captured_at?: string | null
+  /** Parts the vehicle or account did not provide during the last refresh. */
+  unavailable: string[]
+  has_image: boolean
+  updated_at: string
+}
+
+export interface SkodaAccount {
+  connected: boolean
+  username?: string | null
+  last_sync?: string | null
+  last_error?: string | null
+}
+
+export interface SkodaOverview {
+  account: SkodaAccount
+  vehicles: SkodaVehicle[]
+}

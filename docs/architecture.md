@@ -12,18 +12,24 @@ FastAPI backend (python -m homestart, port 8000)
    ├─ api/links.py   ShoLink links, order, iframe embed check
    ├─ api/icons.py   uploaded icons (SVG sanitized)
    ├─ api/tasmota.py TasmoSiz REST API, /ws/tasmota live updates, /ws/tasmota/console/{id}
+   ├─ api/skoda.py   Škoda account, vehicles, refresh, vehicle picture
+   ├─ api/map_tiles.py  map tile proxy with disk cache
    ├─ services/tasmota/
    │    mqtt_link.py  permanent broker connection (aiomqtt), reconnects with back-off
    │    parsing.py    Tasmota payloads → state updates (old split STATUSn and combined STATUS0)
    │    manager.py    device registry, live state, power commands, scan, change notifications
    │    console.py    device consoles: web log polling (/cs), MQTT fallback, commands
    │    http_api.py   Tasmota /cm and /cs HTTP interface, subnet scan
+   ├─ services/skoda/
+   │    client.py     the only user of the myskoda library: read-only calls, data → plain dicts
+   │    service.py    accounts per user, vehicle cache, refresh rules, picture download
    └─ services/secret_box.py  AES-256-GCM for stored credentials (key in a separate file)
    └─ static         frontend/dist (SPA fallback to index.html)
    ▼
 SQLite (WAL) – path from the ini file; schema managed by Alembic
    ▲
 Mosquitto (localhost:1883) ◀──▶ Tasmota devices
+MyŠkoda API, tile.openstreetmap.org ◀── server only (internet)
 ```
 
 ## Sessions and CSRF
@@ -69,6 +75,8 @@ also shows the message if the frame has not loaded within 15 seconds.
 | `login_attempts` | id, username, ip, success, created_at |
 | `tasmota_devices` | id, name, mqtt_topic (unique), host, port, mac, hostname, friendly_names, firmware, model, group_name, source, auth_required, removed, created_at, last_seen |
 | `app_settings` | key, value_enc (encrypted), updated_at – shared Tasmota login |
+| `skoda_accounts` | id, user_id (unique), username_enc, password_enc, refresh_token_enc, last_sync, last_attempt, last_error |
+| `vehicles_cache` | id, account_id, vin, name, data_json (normalized vehicle data), image_file, updated_at |
 
 ## TasmoSiz
 
@@ -106,3 +114,23 @@ also shows the message if the frame has not loaded within 15 seconds.
 - **WebSocket security**: the session cookie is checked and the `Origin` header must match the host.
 - **Address validation**: manually added devices must resolve to a private IPv4 address; the scan subnet
   must be private and at most /22.
+
+## Škoda
+
+- **Library boundary**: `services/skoda/client.py` is the only module importing `myskoda`. It logs in (stored
+  refresh token first, password as fallback), lists the VINs and reads info, status, parking position,
+  driving range and health per vehicle. A part a vehicle does not provide is listed in `unavailable` instead
+  of failing the refresh. Library objects become plain dicts, so the cache survives library upgrades. The
+  library's MQTT push channel is disabled and no command method is called.
+- **Doors and windows**: the API reports each door as closed / door open / window open / both through the
+  render URL; the library decodes it and `client.py` splits it into `doors` and `windows` per side.
+- **Refresh rules** (`service.py`): `POST /api/skoda/refresh {force:false}` asks Škoda when the current HomeStart
+  login (session) has not fetched yet or the last attempt is older than 15 minutes; `force:true` always asks.
+  Refreshes of one user are serialized with a lock. No database transaction is open while waiting for Škoda.
+- **Errors**: a rejected login or unreachable/changed API is stored in `last_error`; the page shows it above
+  the last saved data. A rejected login also drops the stored refresh token.
+- **Pictures**: the official render URL is downloaded once by the server (https, public addresses only,
+  PNG/JPEG/WebP, ≤ 5 MB) into `cache_dir/skoda` and served only to the owner.
+- **Map**: Leaflet (bundled, no CDN) loads tiles from `/api/map/tiles/{z}/{x}/{y}.png`; the server fetches them
+  from `[map] tile_url`, at most two at a time, and caches them for 30 days. In dark mode tiles are inverted
+  with a CSS filter.

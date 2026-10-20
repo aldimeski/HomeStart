@@ -3,9 +3,8 @@
 HomeStart is a local web portal that gives quick access to the applications and devices used every day
 (smart home, local servers, Tasmota devices, car). It runs on a Debian server in the local network.
 
-Current version: **0.3** — base application, the **ShoLink** module and **TasmoSiz** with device overview
-and consoles (phases 1–4 of the specification). The Škoda module is not implemented yet and is shown in the
-menu as "Coming soon".
+Current version: **0.4** — base application, the **ShoLink** module, **TasmoSiz** with device overview and
+consoles, and the **Škoda** vehicle overview (phases 1–5 of the specification).
 
 ## Features
 
@@ -28,6 +27,11 @@ menu as "Coming soon".
 - **TasmoSiz consoles**: the live log of up to 4 devices at once in a column to the right of the devices
   (below them on narrow screens), one below the other, with pause, clear, auto-scroll and close;
   administrators can send commands, users can only read
+
+- **Škoda** (read only): each user connects their own MyŠkoda account under *My account* and sees their
+  vehicles: picture, model, licence plate and VIN, a top view with doors, windows, boot, bonnet and sunroof
+  (green closed, red open), lock state, mileage, fuel or battery, range, and the parking position on an
+  OpenStreetMap map. HomeStart never sends commands to a vehicle.
 
 ## Project layout
 
@@ -64,8 +68,10 @@ cp homestart_default.ini homestart.ini
 | `[security]` | `max_failed_logins`, `lockout_minutes` | `5`, `15` | Login lockout |
 | `[security]` | `key_file` | `data/homestart.key` | Key for encrypting stored device credentials |
 | `[storage]` | `icons_dir` | `data/icons` | Uploaded link icons |
+| `[storage]` | `cache_dir` | `data/cache` | Downloaded vehicle pictures and map tiles (safe to delete) |
 | `[mqtt]` | `enabled`, `host`, `port` | `true`, `localhost`, `1883` | MQTT broker used by TasmoSiz |
 | `[network]` | `scan_subnet` | empty | Subnet for "Scan network"; empty = the server's own /24 |
+| `[map]` | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Map tiles for the Škoda page |
 
 The database and its folder are created automatically. Schema changes are applied at start-up with Alembic.
 `homestart_default.ini` belongs to the application and is rewritten when a new version changes it; put your
@@ -200,6 +206,7 @@ sqlite3 /var/lib/homestart/homestart.db ".backup '/var/backups/homestart-$(date 
 ```
 
 Also back up `/var/lib/homestart/icons/`, `/opt/homestart/homestart.ini` and `/etc/homestart/homestart.key`.
+The cache folder (`cache_dir`) does not need a backup.
 
 ## ShoLink notes
 
@@ -234,3 +241,21 @@ Also back up `/var/lib/homestart/icons/`, `/opt/homestart/homestart.ini` and `/e
   Commands are sent over MQTT (`cmnd/<topic>/<command>`), or over HTTP when MQTT is not available. Only the
   command name is written to the server log, because commands such as `WebPassword` contain secrets.
 - The MQTT broker accepts anonymous clients, so allow port 1883 only from the local subnet in the firewall.
+
+## Škoda notes
+
+- Škoda has no official API for private customers. HomeStart uses the unofficial MyŠkoda API through the
+  open-source library [`myskoda`](https://pypi.org/project/myskoda/) (the one used by the Home Assistant
+  integration). When Škoda changes the API, the module may stop working until the library is updated:
+  update `myskoda` in `backend/requirements.txt` and reinstall. The last saved data stays visible meanwhile.
+- The server needs internet access to Škoda's servers and to the map tile server; the browser only talks to
+  HomeStart.
+- Data is fetched only on demand: the first time the Škoda page is opened after logging in to HomeStart,
+  when the saved data is older than 15 minutes, and with the *Refresh* button. Nothing is polled in the
+  background.
+- The MyŠkoda email and password are stored encrypted (AES-256-GCM, the same key file as the Tasmota login),
+  together with an encrypted session token so that later updates do not need the password.
+  *Sign out of Škoda account* deletes the login, the token and all saved vehicle data of that user.
+- If Škoda asks to accept new terms or a consent screen, open the MyŠkoda app once, accept it and try again.
+- Map tiles are downloaded by the server (over IPv4, with an identifying User-Agent as the OpenStreetMap
+  tile policy requires) and cached for 30 days in `cache_dir/tiles`.

@@ -36,6 +36,8 @@ key_file = data/homestart.key
 
 [storage]
 icons_dir = data/icons
+# Downloaded vehicle images and map tiles; can be deleted at any time.
+cache_dir = data/cache
 
 [mqtt]
 enabled = true
@@ -45,6 +47,10 @@ port = 1883
 [network]
 # Subnet for "Scan network" (TasmoSiz). Empty = the server's own /24 network.
 scan_subnet =
+
+[map]
+# Map tiles for the Škoda module, fetched by the server and cached in cache_dir.
+tile_url = https://tile.openstreetmap.org/{z}/{x}/{y}.png
 """
 
 
@@ -69,6 +75,8 @@ class Settings:
     mqtt_host: str
     mqtt_port: int
     scan_subnet: ipaddress.IPv4Network | None
+    cache_dir: Path
+    map_tile_url: str
 
 
 def default_app_dir() -> Path:
@@ -140,6 +148,10 @@ def load_settings(app_dir: Path | None = None) -> Settings:
         if scan_subnet.num_addresses > 1024 or not scan_subnet.is_private:
             raise ConfigError(f"{ini_file}: [network] scan_subnet must be a private network of at most /22")
 
+    tile_url = parser.get("map", "tile_url", fallback="https://tile.openstreetmap.org/{z}/{x}/{y}.png").strip()
+    if not tile_url.startswith("https://") or not all(part in tile_url for part in ("{z}", "{x}", "{y}")):
+        raise ConfigError(f"{ini_file}: [map] tile_url must be an https URL containing {{z}}, {{x}} and {{y}}")
+
     settings = Settings(
         app_dir=app_dir,
         ini_file=ini_file,
@@ -156,6 +168,8 @@ def load_settings(app_dir: Path | None = None) -> Settings:
         mqtt_host=parser.get("mqtt", "host", fallback="localhost").strip(),
         mqtt_port=mqtt_port,
         scan_subnet=scan_subnet,
+        cache_dir=_resolve(app_dir, parser.get("storage", "cache_dir", fallback="data/cache")),
+        map_tile_url=tile_url,
     )
     log.info("Loaded settings from %s", ini_file)
     log.info("Database file: %s", settings.db_file)
@@ -163,7 +177,7 @@ def load_settings(app_dir: Path | None = None) -> Settings:
 
 
 def prepare_directories(settings: Settings) -> None:
-    for directory in (settings.db_file.parent, settings.icons_dir):
+    for directory in (settings.db_file.parent, settings.icons_dir, settings.cache_dir):
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError as exc:

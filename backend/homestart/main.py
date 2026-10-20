@@ -10,12 +10,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine, func, select
 
-from .api import auth, icons, links, tasmota, users
+from .api import auth, icons, links, map_tiles, skoda, tasmota, users
 from .config import Settings, prepare_directories
 from .db import SessionLocal, make_engine
 from .models import ROLE_ADMIN, User, UserSettings
 from .security import CSRF_HEADER, hash_password
 from .services.secret_box import SecretBox
+from .services.skoda.service import SkodaService
 from .services.tasmota.manager import TasmotaManager
 
 log = logging.getLogger("homestart")
@@ -78,6 +79,7 @@ def create_app(settings: Settings) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.skoda = SkodaService(settings, secret_box)
 
     @app.middleware("http")
     async def csrf_and_headers(request: Request, call_next):
@@ -99,7 +101,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-    for module in (auth, users, links, icons, tasmota):
+    for module in (auth, users, links, icons, tasmota, skoda, map_tiles):
         app.include_router(module.router)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"], include_in_schema=False)

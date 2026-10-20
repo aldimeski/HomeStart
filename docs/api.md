@@ -39,9 +39,15 @@ the header `X-HomeStart: 1`.
 | GET | `/api/tasmota/credentials` | admin | `{username, has_password}` (the password is never returned) |
 | PUT | `/api/tasmota/credentials` | admin | `{username, password?}` – omitted password keeps the stored one |
 | DELETE | `/api/tasmota/credentials` | admin | Remove the shared Tasmota login |
+| GET | `/api/skoda/vehicles` | user | `{account: {connected, username, last_sync, last_error}, vehicles: [...]}` from the cache |
+| PUT | `/api/skoda/account` | user | `{username, password}` – signs in to MyŠkoda, stores the login encrypted, loads the vehicles |
+| DELETE | `/api/skoda/account` | user | Sign out: deletes the login, token and saved vehicle data |
+| POST | `/api/skoda/refresh` | user | `{force}` → `{refreshed, account, vehicles}`; without force only when due (first visit after login, data older than 15 min) |
+| GET | `/api/skoda/vehicles/{vin}/image` | user | Saved picture of the user's own vehicle |
+| GET | `/api/map/tiles/{z}/{x}/{y}.png` | user | Map tile through the server cache |
 | WS | `/ws/tasmota` | user | Live device updates: `snapshot`, `device`, `removed`, `mqtt` messages |
 | WS | `/ws/tasmota/console/{id}` | user | Device console: `hello`, `source`, `lines`, `reset`; send `{"type":"command","command":"Status 0"}` (admin only) |
 
 Errors are returned as `{"detail": "message"}` with the matching HTTP status
 (401 not logged in, 403 not allowed / missing CSRF header, 409 conflict or device offline, 422 invalid input,
-423 switch locked, 429 locked out, 503 MQTT not connected, 504 device did not respond).
+423 switch locked, 429 locked out, 502 Škoda or map server not reachable, 503 MQTT not connected, 504 device did not respond).
