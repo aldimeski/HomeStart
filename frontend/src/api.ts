@@ -231,3 +231,32 @@ export interface SkodaOverview {
   account: SkodaAccount
   vehicles: SkodaVehicle[]
 }
+
+export interface RadioStation {
+  id: number
+  slug: string
+  name: string
+  sub: string | null
+  urls: string[]
+  content_type: string | null
+  sort_order: number
+}
+
+export type RadioStationInput = Pick<RadioStation, 'slug' | 'name' | 'sub' | 'urls' | 'content_type'>
+
+/** A station as the Radiopanel gets it: no source addresses. */
+export interface PanelStation {
+  id: string
+  name: string
+  sub: string | null
+}
+
+export interface PanelStations {
+  openhab_enabled: boolean
+  openhab_start: string
+  stations: PanelStation[]
+}
+
+export interface PanelStatus {
+  stations: { id: string; name: string; listeners: number; title: string | null }[]
+}

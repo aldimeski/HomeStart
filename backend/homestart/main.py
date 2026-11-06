@@ -10,11 +10,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine, func, select
 
-from .api import auth, icons, links, map_tiles, skoda, tasmota, users
+from .api import auth, icons, links, map_tiles, openhab, radio, skoda, tasmota, users
 from .config import Settings, prepare_directories
 from .db import SessionLocal, make_engine
 from .models import ROLE_ADMIN, User, UserSettings
 from .security import CSRF_HEADER, hash_password
+from .services.radio.hub import RadioHub
 from .services.secret_box import SecretBox
 from .services.skoda.service import SkodaService
 from .services.tasmota.manager import TasmotaManager
@@ -68,7 +69,13 @@ def create_app(settings: Settings) -> FastAPI:
         manager = TasmotaManager(settings, secret_box)
         app.state.tasmota = manager
         await manager.start()
+        app.state.radio = RadioHub(settings.radio_max_listeners)
+        if settings.openhab_url:
+            app.state.openhab = openhab.make_client(settings)
         yield
+        await app.state.radio.stop()
+        if settings.openhab_url:
+            await app.state.openhab.aclose()
         await manager.stop()
 
     app = FastAPI(
@@ -94,7 +101,8 @@ def create_app(settings: Settings) -> FastAPI:
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
-        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        if not getattr(request.state, "skip_csp", False):
+            response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
@@ -103,6 +111,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     for module in (auth, users, links, icons, tasmota, skoda, map_tiles):
         app.include_router(module.router)
+    app.include_router(radio.admin_router)
+    app.include_router(radio.panel_router)
+    openhab.register(app, settings)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"], include_in_schema=False)
     def api_not_found(rest: str):

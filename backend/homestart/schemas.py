@@ -131,3 +131,58 @@ class EmbedCheck(BaseModel):
 
 class IconOut(BaseModel):
     icon: str
+
+
+RADIO_SLUG_PATTERN = r"^[a-z0-9-]{1,40}$"
+CONTENT_TYPE_PATTERN = r"^[a-z0-9.+-]+/[a-z0-9.+-]+$"
+
+
+class RadioStationBase(BaseModel):
+    slug: str = Field(pattern=RADIO_SLUG_PATTERN)
+    name: str = Field(min_length=1, max_length=64)
+    sub: str | None = Field(default=None, max_length=64)
+    urls: list[str] = Field(min_length=1, max_length=5)
+    content_type: str | None = Field(default=None, max_length=64, pattern=CONTENT_TYPE_PATTERN)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Name must not be empty")
+        return value
+
+    @field_validator("sub", "content_type")
+    @classmethod
+    def _empty_to_none(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+    @field_validator("urls")
+    @classmethod
+    def _check_urls(cls, values: list[str]) -> list[str]:
+        cleaned = [_validate_url(value) for value in values]
+        if any(len(value) > 500 for value in cleaned):
+            raise ValueError("A source address is too long")
+        return cleaned
+
+
+class RadioStationCreate(RadioStationBase):
+    pass
+
+
+class RadioStationUpdate(RadioStationBase):
+    pass
+
+
+class RadioStationOut(BaseModel):
+    id: int
+    slug: str
+    name: str
+    sub: str | None
+    urls: list[str]
+    content_type: str | None
+    sort_order: int
+
+
+class RadioStationOrder(BaseModel):
+    ids: list[int]

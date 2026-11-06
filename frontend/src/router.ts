@@ -17,6 +17,7 @@ export const router = createRouter({
         { path: 'link/:id', component: LinkFrameView, props: true },
         { path: 'tasmosiz', component: () => import('./views/tasmosiz-view.vue') },
         { path: 'skoda', component: () => import('./views/skoda-view.vue') },
+        { path: 'radiopanel', component: () => import('./views/radio-view.vue') },
         {
           path: 'config',
           component: () => import('./views/config/config-layout.vue'),
@@ -25,6 +26,7 @@ export const router = createRouter({
             { path: 'links', component: () => import('./views/config/links-config.vue'), meta: { admin: true } },
             { path: 'users', component: () => import('./views/config/users-config.vue'), meta: { admin: true } },
             { path: 'devices', component: () => import('./views/config/devices-config.vue'), meta: { admin: true } },
+            { path: 'radio', component: () => import('./views/config/radio-config.vue'), meta: { admin: true } },
             { path: 'account', component: () => import('./views/config/my-account.vue') },
           ],
         },

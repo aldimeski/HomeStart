@@ -145,3 +145,19 @@ class VehicleCache(Base):
     data_json: Mapped[str] = mapped_column(Text, nullable=False)
     image_file: Mapped[str | None] = mapped_column(String(80))
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class RadioStation(Base):
+    """An internet radio station shown in the Radiopanel. The source addresses are only ever read from here."""
+
+    __tablename__ = "radio_stations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Short label used in /openpanel/radio/<slug>.
+    slug: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    sub: Mapped[str | None] = mapped_column(String(64))
+    urls_json: Mapped[str] = mapped_column(Text, nullable=False)  # JSON list, tried in order
+    # Overrides the type the source sends (e.g. audio/aac instead of audio/aacp for Safari).
+    content_type: Mapped[str | None] = mapped_column(String(64))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

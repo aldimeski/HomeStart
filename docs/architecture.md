@@ -78,6 +78,7 @@ also shows the message if the frame has not loaded within 15 seconds.
 | `tasmota_devices` | id, name, mqtt_topic (unique), host, port, mac, hostname, friendly_names, firmware, model, group_name, source, auth_required, removed, created_at, last_seen |
 | `app_settings` | key, value_enc (encrypted), updated_at – shared Tasmota login |
 | `skoda_accounts` | id, user_id (unique), username_enc, password_enc, refresh_token_enc, last_sync, last_attempt, last_error |
+| `radio_stations` | id, slug (unique), name, sub, urls_json (list), content_type, sort_order |
 | `vehicles_cache` | id, account_id, vin, name, data_json (normalized vehicle data), image_file, updated_at |
 
 ## TasmoSiz
@@ -148,6 +149,32 @@ also shows the message if the frame has not loaded within 15 seconds.
 - **Map**: Leaflet (bundled, no CDN) loads tiles from `/api/map/tiles/{z}/{x}/{y}.png`; the server fetches them
   from `[map] tile_url`, at most two at a time, and caches them for 30 days. In dark mode tiles are inverted
   with a CSS filter.
+
+## Radiopanel
+
+- **Relay** (`services/radio/hub.py`): `RadioHub.subscribe()` joins or starts the relay of a station. A `Stream` owns
+  the one upstream connection (httpx, IPv4, certificates checked, at most 5 redirects) and pushes every chunk into
+  a bounded queue per listener; a slow listener loses its oldest audio instead of holding the others back. The
+  connection is closed when the last listener leaves. Source addresses are tried in order (10 s each; a text or
+  image answer counts as failure). A source that drops or is silent for 15 s is reconnected up to 3 times
+  (the counter restarts after a connection that lasted 30 s), then the listeners' streams end. `max_listeners`
+  is checked and the slot taken before waiting for the station, so parallel requests cannot exceed it.
+- **ICY** (`services/radio/icy.py`): the request asks for metadata; when the answer has `icy-metaint`, the
+  demultiplexer removes the metadata blocks, so the browser gets clean audio, and keeps `StreamTitle` for
+  `/openpanel/status`. The title is decoded as UTF-8, else Latin-1, and written by the browsers as text only.
+- **Access** (`access.py`): `require_local_or_user` lets in clients from `[radio] allowed_networks` and valid
+  sessions. `X-Forwarded-For` is ignored. It opens its own short database session so that a long audio stream
+  does not hold a connection.
+- **openHAB** (`api/openhab.py`): routes are registered at start for each path in `openhab_paths`. Requests go to
+  `openhab_url` and the answer is streamed back unchanged (no read timeout, so Basic UI's live updates arrive
+  immediately); `Location` is made relative, `X-Frame-Options` removed, HomeStart's session cookie not passed on.
+  The responses keep openHAB's own security headers: HomeStart's content security policy is skipped for them.
+- **Compression**: the gzip middleware skips responses that already have a `Content-Encoding`, so audio and
+  proxied responses are sent with `Content-Encoding: identity` and are not buffered.
+- **Panel for old tablets** (`static/openpanel/`): plain ES5 without a build step, for Safari on iOS 9, served at
+  `/openpanel/` (the Vue app cannot run there). Scripts and styles are separate files because of the content
+  security policy. The audio element is outside the tabs, so the sound goes on when the Home tab is opened. The Vue
+  module keeps one `Audio` in the store, so the sound goes on while other pages are open.
 
 ## Backups
 

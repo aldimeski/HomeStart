@@ -98,6 +98,13 @@ scan_subnet =
 [map]
 tile_url = https://tile.openstreetmap.org/{z}/{x}/{y}.png
 
+[radio]
+# Networks that may use /openpanel and the openHAB pass-through without logging in (comma separated).
+allowed_networks = 192.168.1.0/24
+max_listeners = 3
+# openHAB address for the Home tab of the Radiopanel (empty = no Home tab), e.g. http://127.0.0.1:8080
+openhab_url =
+
 [backup]
 dir = $BACKUPS
 daily_keep = 7

@@ -40,6 +40,12 @@ Current version: **1.0** — all phases of the specification: base application, 
   (green closed, red open), lock state, mileage, fuel or battery, range, and the parking position on an
   OpenStreetMap map. HomeStart never sends commands to a vehicle.
 
+- **Radiopanel**: internet radio and the openHAB page in one module, below Škoda. The server relays the stations
+  (HTTP or HTTPS, one connection per station however many listeners, ICY track titles), so old tablets such as an
+  iPad with iOS 9 can play streams their Safari cannot open itself. The same panel, written in plain old
+  JavaScript, is open without login to the local network at `/openpanel`. Stations are managed by administrators
+  under *Configuration → Radio*.
+
 ## Project layout
 
 ```
@@ -78,6 +84,11 @@ cp homestart_default.ini homestart.ini
 | `[storage]` | `cache_dir` | `data/cache` | Downloaded vehicle pictures and map tiles (safe to delete) |
 | `[mqtt]` | `enabled`, `host`, `port` | `true`, `localhost`, `1883` | MQTT broker used by TasmoSiz |
 | `[network]` | `scan_subnet` | empty | Subnet for "Scan network"; empty = the server's own /24 |
+| `[radio]` | `allowed_networks` | `192.168.1.0/24` | Networks that may use `/openpanel` and the openHAB pass-through without login (comma separated; loopback is always allowed). A logged-in user may use them from anywhere |
+| `[radio]` | `max_listeners` | `3` | Most radio listeners at the same time, all stations together |
+| `[radio]` | `openhab_url` | empty | openHAB address (HTTP or HTTPS) for the Home tab; empty = no Home tab |
+| `[radio]` | `openhab_start`, `openhab_paths` | Basic UI sitemap, `/basicui, /icon, /rest, /chart, /proxy, /static, /images` | Page the Home tab opens first, and the paths forwarded to openHAB (everything else is not forwarded) |
+| `[radio]` | `openhab_verify_tls` | `true` | Certificate check for an HTTPS openHAB; switch off only for a self-signed one (never applies to stations) |
 | `[backup]` | `dir` | `data/backups` | Database copies (`daily/` and `monthly/`) |
 | `[backup]` | `daily_keep`, `monthly_keep` | `7`, `5` | Keep daily copies for 7 days and monthly copies for 5 months |
 | `[map]` | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Map tiles for the Škoda page |
@@ -267,3 +278,21 @@ sudo systemctl start homestart
 - If Škoda asks to accept new terms or a consent screen, open the MyŠkoda app once, accept it and try again.
 - Map tiles are downloaded by the server (over IPv4, with an identifying User-Agent as the OpenStreetMap
   tile policy requires) and cached for 30 days in `cache_dir/tiles`.
+
+## Radiopanel notes
+
+- **Two ways in**: the *Radiopanel* module (after login) and `http://<server>:8000/openpanel` (no login, only from
+  `allowed_networks`). Both use the same addresses, so the tablet needs nothing else: `/openpanel/` (page),
+  `/openpanel/radio/<id>` (audio), `/openpanel/stations`, `/openpanel/status` (listeners and current track per
+  station, for diagnostics) and `/openpanel/health`.
+- **No open proxy**: a request carries only a station id; source addresses come from the database, where
+  only an administrator can enter them (HTTP or HTTPS, up to five per station, tried in order). Certificates of
+  stations are always checked and there is no setting to turn that off. Up to 5 redirects are followed.
+- **Home tab**: openHAB is forwarded on its own root paths (Basic UI uses absolute addresses such as `/rest` and
+  `/icon`), only those from `openhab_paths`, only to `openhab_url`. Anyone who can open `/openpanel` can therefore
+  control openHAB exactly as on its own port. Keep port 8000 closed to the internet. HomeStart's own session
+  cookie is not passed to openHAB.
+- If a station does not play on the tablet, check `/openpanel/status` and the log (`journalctl -u homestart`);
+  a 502 means none of the station's addresses answered. If Safari rejects a type such as `audio/aacp`, set
+  *Content type* of the station to `audio/aac`.
+- Stations that answer with the old Shoutcast v1 status line (`ICY 200 OK`) instead of HTTP are not supported.

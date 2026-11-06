@@ -1,0 +1,44 @@
+* { -webkit-box-sizing: border-box; box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  background: #1c1f26;
+  color: #f1f3f6;
+  -webkit-text-size-adjust: 100%;
+}
+#app { display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; height: 100%; }
+#tabs { -webkit-flex: none; flex: none; display: -webkit-flex; display: flex; background: #12141a; border-bottom: 1px solid #2f343f; }
+.tab {
+  -webkit-flex: 1; flex: 1; padding: 14px 8px; border: 0; border-bottom: 3px solid transparent;
+  background: transparent; color: #9aa3b2; font-size: 18px; font-weight: 600;
+}
+.tab.active { color: #fff; border-bottom-color: #4f9cff; }
+.view { -webkit-flex: 1; flex: 1; min-height: 0; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; }
+#view-radio { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#now {
+  -webkit-flex: none; flex: none; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+  padding: 14px 16px; background: #252a34; border-bottom: 1px solid #2f343f;
+}
+#now-text { -webkit-flex: 1; flex: 1; min-width: 0; }
+#now-station { font-weight: 700; }
+#now-title { color: #cfd6e3; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#now-status { color: #9aa3b2; font-size: 15px; margin-top: 2px; }
+#now-status.error { color: #ff7a7a; }
+#stop { margin-left: 12px; padding: 12px 22px; border: 0; border-radius: 8px; background: #d9443f; color: #fff; font-size: 17px; font-weight: 600; }
+#stop[disabled] { background: #3a404c; color: #7d8696; }
+#stations { list-style: none; margin: 0; padding: 8px 12px 24px; }
+#stations li { margin: 8px 0; }
+.station {
+  display: block; width: 100%; text-align: left; padding: 14px 16px; border: 1px solid #2f343f; border-radius: 10px;
+  background: #252a34; color: #f1f3f6; font-size: 18px;
+}
+.station.playing { border-color: #4f9cff; background: #1f3552; }
+.station .sub { display: block; color: #9aa3b2; font-size: 14px; margin-top: 2px; }
+#home-bar { -webkit-flex: none; flex: none; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 8px 12px; background: #252a34; }
+#home-bar button, #home-bar a {
+  padding: 9px 16px; margin-right: 10px; border: 1px solid #3a404c; border-radius: 8px; background: #2f343f;
+  color: #f1f3f6; font-size: 16px; text-decoration: none;
+}
+#home-frame { -webkit-flex: 1; flex: 1; width: 100%; border: 0; background: #fff; }
+.empty { color: #9aa3b2; padding: 24px 16px; }

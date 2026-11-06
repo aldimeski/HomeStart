@@ -1,6 +1,7 @@
 import { computed, reactive } from 'vue'
 import { api, type Me, type User, type UserSettings } from '../api'
 import { applyTheme } from '../theme'
+import { radio } from './radio'
 
 const DEFAULT_SETTINGS: UserSettings = { theme: 'system', sidebar_collapsed: false, sholink_expanded: true }
 
@@ -37,6 +38,7 @@ export const session = {
     try {
       await api('POST', '/api/auth/logout')
     } finally {
+      radio.stop()
       setMe(null)
     }
   },

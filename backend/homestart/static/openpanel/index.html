@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Radio panel">
+  <title>Radio panel</title>
+  <link rel="stylesheet" href="/openpanel/panel.css">
+</head>
+<body>
+  <!-- Written in plain old JavaScript: it has to run in Safari on iOS 9. -->
+  <div id="app">
+    <header id="tabs">
+      <button type="button" id="tab-radio" class="tab active">Radio</button>
+      <button type="button" id="tab-home" class="tab" style="display:none">Home</button>
+    </header>
+
+    <section id="view-radio" class="view">
+      <div id="now">
+        <div id="now-text">
+          <div id="now-station">Choose a station</div>
+          <div id="now-title"></div>
+          <div id="now-status"></div>
+        </div>
+        <button type="button" id="stop" disabled>Stop</button>
+      </div>
+      <ul id="stations"></ul>
+    </section>
+
+    <section id="view-home" class="view" style="display:none">
+      <div id="home-bar">
+        <button type="button" id="home-reload">Reload</button>
+        <a id="home-open" target="_blank" rel="noopener">Open in new window</a>
+      </div>
+      <iframe id="home-frame" title="openHAB"></iframe>
+    </section>
+  </div>
+
+  <!-- Outside the tabs, so the sound does not stop when the Home tab is opened. -->
+  <audio id="player" preload="none"></audio>
+  <script src="/openpanel/panel.js"></script>
+</body>
+</html>

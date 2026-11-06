@@ -108,12 +108,26 @@ the terms, and press **Connect account** again. The same questions are in the My
 Profile → Edit my profile.
 **Sign out of Škoda account** deletes the stored login and all saved car data.
 
+## Radiopanel – radio and openHAB
+
+**Radiopanel** (below Škoda) has two tabs. **Radio** lists the stations: press one to listen, **Stop** to end.
+The track title appears under the station name when the station sends it. The sound goes on while you open
+other pages of HomeStart. **Home** shows openHAB (when the administrator has set its address).
+
+The same panel is available without signing in at `http://<server>:8000/openpanel` from the home network. It is
+made for old tablets (iPad with iOS 9): open it in Safari, and add it to the home screen with Share → Add to
+Home Screen. At most 3 people can listen at the same time; a fourth gets an error.
+
+Administrators manage the stations under **Configuration → Radio**: name, subtitle, an id (used in the
+address), one or more stream addresses (tried in order) and, only if needed, a content type.
+
 ## Configuration
 
 - **Links** (administrators): add, edit, delete and reorder ShoLink links; choose an icon from the library,
   the device icons or upload your own (SVG, PNG, WebP or ICO up to 256 KB).
 - **Users** (administrators): add users, change their role, deactivate them, reset passwords, delete them.
   The last active administrator cannot be removed.
+- **Radio** (administrators): the radio stations of the Radiopanel.
 - **Devices** (administrators): the shared login of the Tasmota web pages (used for scanning and consoles;
   stored encrypted) and the list of devices.
 - **My account**: your password, appearance, menu and your Škoda account.

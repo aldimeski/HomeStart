@@ -12,6 +12,7 @@ import {
   mdiLinkVariant,
   mdiLogout,
   mdiOpenInNew,
+  mdiRadio,
   mdiWeatherNight,
   mdiWhiteBalanceSunny,
 } from '@mdi/js'
@@ -34,6 +35,7 @@ const expanded = computed(() => session.state.settings.sholink_expanded)
 const modules = [
   { to: '/tasmosiz', label: 'TasmoSiz', icon: mdiFlashOutline },
   { to: '/skoda', label: 'Škoda', icon: mdiCarOutline },
+  { to: '/radiopanel', label: 'Radiopanel', icon: mdiRadio },
 ]
 
 function itemClass(active: boolean) {

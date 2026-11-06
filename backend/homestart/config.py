@@ -6,11 +6,13 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 log = logging.getLogger("homestart.config")
 
 USER_INI_NAME = "homestart.ini"
 DEFAULT_INI_NAME = "homestart_default.ini"
+DEFAULT_OPENHAB_PATHS = "/basicui, /icon, /rest, /chart, /proxy, /static, /images"
 
 DEFAULT_INI_CONTENT = """\
 # HomeStart default settings.
@@ -52,6 +54,20 @@ scan_subnet =
 # Map tiles for the Škoda module, fetched by the server and cached in cache_dir.
 tile_url = https://tile.openstreetmap.org/{z}/{x}/{y}.png
 
+[radio]
+# Radiopanel: /openpanel and the openHAB pass-through are open without login only to these networks
+# (comma separated); a logged-in HomeStart user may always use them. Loopback is always allowed.
+allowed_networks = 192.168.1.0/24
+# Most listeners at the same time (all stations together).
+max_listeners = 3
+# openHAB shown on the Home tab. Empty = the tab is disabled. HTTP or HTTPS.
+openhab_url =
+openhab_start = /basicui/app?sitemap=uicomponents_Basic
+# Paths forwarded to openHAB (comma separated); everything else gets 404.
+openhab_paths = /basicui, /icon, /rest, /chart, /proxy, /static, /images
+# Switch off only for an openHAB with a self-signed certificate.
+openhab_verify_tls = true
+
 [backup]
 # Database copies made by "python -m homestart.backup" (homestart-backup.timer runs it daily).
 dir = data/backups
@@ -88,6 +104,12 @@ class Settings:
     backup_dir: Path
     backup_daily_keep: int
     backup_monthly_keep: int
+    radio_allowed_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]
+    radio_max_listeners: int
+    openhab_url: str
+    openhab_start: str
+    openhab_paths: tuple[str, ...]
+    openhab_verify_tls: bool
 
 
 def default_app_dir() -> Path:
@@ -163,6 +185,36 @@ def load_settings(app_dir: Path | None = None) -> Settings:
     if not tile_url.startswith("https://") or not all(part in tile_url for part in ("{z}", "{x}", "{y}")):
         raise ConfigError(f"{ini_file}: [map] tile_url must be an https URL containing {{z}}, {{x}} and {{y}}")
 
+    networks = []
+    for part in parser.get("radio", "allowed_networks", fallback="192.168.1.0/24").split(","):
+        if not part.strip():
+            continue
+        try:
+            networks.append(ipaddress.ip_network(part.strip(), strict=False))
+        except ValueError as exc:
+            raise ConfigError(f"{ini_file}: [radio] allowed_networks has an invalid network: {part.strip()}") from exc
+    networks += [ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128")]
+
+    openhab_url = parser.get("radio", "openhab_url", fallback="").strip().rstrip("/")
+    if openhab_url:
+        parts = urlsplit(openhab_url)
+        if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
+            raise ConfigError(f"{ini_file}: [radio] openhab_url must be an http:// or https:// address")
+    openhab_start = parser.get("radio", "openhab_start", fallback="/basicui/app?sitemap=uicomponents_Basic").strip()
+    if not openhab_start.startswith("/"):
+        raise ConfigError(f"{ini_file}: [radio] openhab_start must start with /")
+    openhab_paths = tuple(
+        part.strip().rstrip("/")
+        for part in parser.get("radio", "openhab_paths", fallback=DEFAULT_OPENHAB_PATHS).split(",")
+        if part.strip()
+    )
+    if any(not path.startswith("/") or path in ("", "/", "/api", "/openpanel", "/assets") for path in openhab_paths):
+        raise ConfigError(f"{ini_file}: [radio] openhab_paths must be paths such as /basicui (not /, /api, /openpanel)")
+    try:
+        openhab_verify_tls = parser.getboolean("radio", "openhab_verify_tls", fallback=True)
+    except ValueError as exc:
+        raise ConfigError(f"{ini_file}: [radio] openhab_verify_tls must be true or false") from exc
+
     settings = Settings(
         app_dir=app_dir,
         ini_file=ini_file,
@@ -184,6 +236,12 @@ def load_settings(app_dir: Path | None = None) -> Settings:
         backup_dir=_resolve(app_dir, parser.get("backup", "dir", fallback="data/backups")),
         backup_daily_keep=_get_int(parser, "backup", "daily_keep", 7, ini_file),
         backup_monthly_keep=_get_int(parser, "backup", "monthly_keep", 5, ini_file),
+        radio_allowed_networks=tuple(networks),
+        radio_max_listeners=_get_int(parser, "radio", "max_listeners", 3, ini_file),
+        openhab_url=openhab_url,
+        openhab_start=openhab_start,
+        openhab_paths=openhab_paths,
+        openhab_verify_tls=openhab_verify_tls,
     )
     log.info("Loaded settings from %s", ini_file)
     log.info("Database file: %s", settings.db_file)

@@ -48,8 +48,27 @@ the header `X-HomeStart: 1`.
 | POST | `/api/skoda/refresh` | user | `{force}` → `{refreshed, account, vehicles}`; without force only when due (first visit after login, data older than 15 min) |
 | GET | `/api/skoda/vehicles/{vin}/image` | user | Saved picture of the user's own vehicle |
 | GET | `/api/map/tiles/{z}/{x}/{y}.png` | user | Map tile through the server cache |
+| GET | `/api/radio/stations` | admin | Stations with source addresses, in display order |
+| POST | `/api/radio/stations` | admin | `{slug, name, sub?, urls[1..5], content_type?}` → station; 409 when the id is taken |
+| PUT | `/api/radio/stations/{id}` | admin | Update a station |
+| DELETE | `/api/radio/stations/{id}` | admin | Delete a station |
+| PUT | `/api/radio/stations/order` | admin | `{ids: [...]}` – full new order |
 | WS | `/ws/tasmota` | user | Live device updates: `snapshot`, `device`, `removed`, `mqtt` messages |
 | WS | `/ws/tasmota/console/{id}` | user | Device console: `hello`, `source`, `lines`, `reset`; send `{"type":"command","command":"Status 0"}` (admin only) |
+
+## Radiopanel (open to the local network)
+
+These need no session when the client is in `[radio] allowed_networks` (or loopback); otherwise a logged-in user
+is required and anyone else gets 403. They are not under `/api`, so the CSRF header is not needed.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/openpanel/` | The panel for old tablets (HTML; `panel.js` and `panel.css` next to it) |
+| GET | `/openpanel/stations` | `{openhab_enabled, openhab_start, stations: [{id, name, sub}]}` |
+| GET, HEAD | `/openpanel/radio/{id}` | Endless audio stream of a station. 404 unknown id, 503 `max_listeners` reached, 502 no source answered. Headers: `Cache-Control: no-store`, no `Content-Length`; a `Range` request is answered with the whole stream (200) |
+| GET | `/openpanel/status` | `{uptime_seconds, total_listeners, max_listeners, stations: [{id, name, listeners, title}]}` |
+| GET | `/openpanel/health` | `ok` |
+| GET, HEAD, POST, PUT, DELETE | paths from `[radio] openhab_paths` (e.g. `/basicui/…`, `/rest/…`) | Forwarded to `openhab_url` and answered as received; 502 when openHAB does not answer. Other paths are not forwarded |
 
 Errors are returned as `{"detail": "message"}` with the matching HTTP status
 (401 not logged in, 403 not allowed / missing CSRF header, 409 conflict or device offline, 422 invalid input,
