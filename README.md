@@ -46,6 +46,13 @@ Current version: **1.0** — all phases of the specification: base application, 
   JavaScript, is open without login to the local network at `/openpanel`. Stations are managed by administrators
   under *Configuration → Radio*.
 
+- **Player** (library, first part): music locations (folders of the server) added by administrators are scanned, and the
+  files are indexed with their tags (ID3, MP4, Vorbis; old encodings repaired). Everybody can browse by album, genre or
+  folder and search. Administrators rescan a location at any time and get a report of new, changed and removed files and
+  folders. The server streams the files to the browser (Range support, so tracks can be seeked), keeps the queue of each
+  listener and plays tracks one after another without a pause, with shuffle, repeat, previous/next and a player bar that
+  stays while other pages are open. Music can be read from folders of the server and from SMB network shares (user name and password stored encrypted). Albums get their pictures from the files, the folders or the Cover Art Archive, and missing year and genre from MusicBrainz (switchable). Everybody can make playlists; administrators set panel playlists, favourite tracks and suggestions for the openpanel. The openpanel (`/openpanel`, no login, local network) has a Music tab written in plain old JavaScript for an iPad with iOS 9: favourites, suggestions, panel playlists, browsing and search of the whole library, and the same controls with seek and gapless playback.
+
 ## Project layout
 
 ```
@@ -89,6 +96,15 @@ cp homestart_default.ini homestart.ini
 | `[radio]` | `openhab_url` | empty | openHAB address (HTTP or HTTPS) for the Home tab; empty = no Home tab |
 | `[radio]` | `openhab_start`, `openhab_paths` | Basic UI sitemap, `/basicui, /icon, /rest, /chart, /proxy, /static, /images` | Page the Home tab opens first, and the paths forwarded to openHAB (everything else is not forwarded) |
 | `[radio]` | `openhab_verify_tls` | `true` | Certificate check for an HTTPS openHAB; switch off only for a self-signed one (never applies to stations) |
+| `[player]` | `smb_timeout_seconds` | `15` | Seconds to wait for a network share before a scan or a stream gives up |
+| `[player]` | `metadata_online` | `true` | Look up albums online (MusicBrainz, Cover Art Archive); can also be switched in Configuration → Player |
+| `[player]` | `musicbrainz_contact` | empty | Contact details (e.g. an e-mail address) for the User-Agent of MusicBrainz requests |
+| `[player]` | `metadata_recheck_days` | `30` | Days before an album that was not found online is looked up again |
+| `[player]` | `openpanel_formats` | `mp3, m4a, aac` | File types the openpanel offers (an old iPad cannot play FLAC or OGG) |
+| `[player]` | `max_listeners` | `3` | Most people streaming music at the same time (the radio has its own limit) |
+| `[player]` | `formats` | `mp3, m4a, aac, ogg, flac` | File types the library scan picks up |
+| `[player]` | `missing_keep_days` | `30` | Days a file that disappeared stays in the library before it is removed |
+| `[player]` | `legacy_encoding` | `cp1250` | Encoding tried for old tags that are not valid UTF-8 |
 | `[backup]` | `dir` | `data/backups` | Database copies (`daily/` and `monthly/`) |
 | `[backup]` | `daily_keep`, `monthly_keep` | `7`, `5` | Keep daily copies for 7 days and monthly copies for 5 months |
 | `[map]` | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Map tiles for the Škoda page |

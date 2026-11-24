@@ -79,7 +79,85 @@ also shows the message if the frame has not loaded within 15 seconds.
 | `app_settings` | key, value_enc (encrypted), updated_at – shared Tasmota login |
 | `skoda_accounts` | id, user_id (unique), username_enc, password_enc, refresh_token_enc, last_sync, last_attempt, last_error |
 | `radio_stations` | id, slug (unique), name, sub, urls_json (list), content_type, sort_order |
+| `music_sources` | id, name (unique), kind (`local` or `smb`), path (local), host, share, subpath (SMB), domain (unused), username_enc, password_enc (encrypted), enabled, last_scan_at, last_scan_status |
+| `music_albums` | id, album_key (unique), title, artist, year, genre, cover_file, cover_source (`embedded`, `folder`, `online`), cover_checked, meta_status (`pending`, `found`, `not_found`, `error`), meta_checked_at, mb_release_id |
+| `music_tracks` | id, source_id, rel_path (unique per source, `/` separators), folder, size, mtime, format, duration_s, bitrate, title, artist, album_artist, album_id, track_no, disc_no, year, genre, tags_derived, available, missing_since, search_text |
+| `playlists` | id, user_id (NULL = panel playlist), name, created_at |
+| `playlist_tracks` | id, playlist_id, track_id (both cascade), position |
+| `panel_items` | id, section (`favorites`, `suggestions`), kind (`track`, `album`, `folder`, `playlist`), ref, title, sort_order; unique per section, kind and ref |
+| `music_scans` | id, source_id, started_at, finished_at, started_by, status, added, changed, removed, errors, error_message, details_json (new, changed, removed files; new and removed folders) |
 | `vehicles_cache` | id, account_id, vin, name, data_json (normalized vehicle data), image_file, updated_at |
+
+## Player (library)
+
+- **Scan** (`services/player/scanner.py`): `ScanService` runs one scan at a time in a background thread (several
+  locations are done one after the other; the administrator can cancel). A scan walks the folder without following
+  links (a link that leads out of the location is skipped), compares size and modification time with the database, and
+  reads the tags only of new and changed files. Files that are gone are marked `available = false` with
+  `missing_since`; they are deleted only after `[player] missing_keep_days` or by "remove missing". A location that
+  cannot be read fails the scan and marks nothing as removed. After a restart, scans left as `running` are marked failed.
+- **Report**: every scan writes a `music_scans` row; the new and removed folders are the folders (with their parents)
+  that hold music before and after the scan.
+- **Tags** (`services/player/tags.py`, mutagen): ID3v2 with ID3v1 as the fallback, MP4 and Vorbis through mutagen's
+  easy interface. Text declared as Latin-1 is repaired: valid UTF-8 first, then `[player] legacy_encoding`. Missing
+  title, artist and track number come from the file name (`Artist - Album - 01 - Title`, `Artist - 01 - Title`,
+  `01 - Title`), the album from the folder name; such tracks have `tags_derived`.
+- **Albums**: tracks share an album by album and album artist; without an album artist tag, or without an album
+  tag, by album and folder. The album's artist is its album artist, the track artist when all tracks share it, else
+  "Various artists".
+- **Search**: `music_tracks.search_text` holds title, artist and album without case and accents; the query is folded the
+  same way (`fold()`), so "sto" finds "što".
+- **Locations** (`services/player/files.py`): `make_location()` gives a `LocalLocation` or an `SmbLocation` with the same
+  four operations – `check`, `walk`, `open_for_tags`, `open_stream` – so scanning and streaming do not know which one
+  they read. The SMB location uses `smbclient` (smbprotocol), NTLM on port 445, the user name and password passed with every
+  call (no global session); with no user name it reads as `Guest`. Credentials are AES-256-GCM encrypted in
+  `username_enc` / `password_enc` (key file as for Škoda), decrypted only for the length of a call, and never written to
+  a log or an answer. Library errors are turned into short messages (`smb_error`) without any secret. Only servers whose
+  addresses are all private, loopback or link-local are accepted (checked when saved, tested and scanned). Tags are read
+  from a file object, so only the parts of a remote file the tag reader asks for are transferred; the bytes of a track are
+  read at the offsets the Range request names. Links on a share are not followed.
+- **Playlists and the openpanel content** (`api/player_playlists.py`): the list is the `position` of `playlist_tracks`
+  entries (ids, so a track can be there twice and one entry can be removed). `selected_tracks()` turns what a request
+  names – a track, tracks, an album, a folder, a playlist – into track ids and is shared by the playlists and the listening
+  session; it only gives tracks that can be played now. Access is decided in one place: `visible_playlist()` (own or panel)
+  and `can_edit()` (the owner, or an administrator for a panel playlist). `panel_content()` is what the openpanel will
+  read: favourites, suggestions (each item resolved to a name and an `available` flag) and the panel playlists.
+- **Openpanel** (`api/player_panel.py`, `static/openpanel/music.js`): a router under `/openpanel/player` with the same access
+  rule as the radio (`require_local_or_user`) that re-uses the handlers of the app's library and the cores of the stream and
+  the session (`serve_track`, `session_state`, `run_command`) with a session key `panel:<client_id>` and no user. A dependency
+  narrows `api.player.visible_formats` (a `ContextVar` read by `_live()`) to `[player] openpanel_formats` for the request, so
+  every query of the tablet already leaves out what it cannot play; it is `async` so that it runs in the task that handles the
+  request. Non-GET requests need the `X-HomeStart` header. The page (`music.js`) is plain ES5 for Safari on iOS 9
+  (a test keeps ES6 syntax out of it): it mirrors the browser store of the app – two `<audio>` elements, preload of the next
+  track `PRELOAD_SECONDS` before the end, change-over on `ended` – and unlocks both elements during the first tap by playing a
+  short silence, since iOS only allows sound that starts from a tap. Starting the radio pauses the music and the other way
+  round (`window.HomeStartPanel` hooks in `panel.js`). Text from the library is only written with `textContent`.
+- **Pictures and online data** (`services/player/metadata.py`, `covers.py`): `MetadataService` works through the albums that
+  need it in a background thread (started at start-up, after every scan, and by the administrator). For each album it
+  looks for a picture first in the files (ID3 APIC, MP4 `covr`, FLAC pictures; the first three tracks), then in the folder
+  (`cover`, `folder`, `front`, `albumart`, `album` as jpg, jpeg or png), then – when the online lookup is on – on
+  MusicBrainz (`release:"title" AND artist:"name"`, a hit needs score 80+, the same title and a matching artist; the one
+  with the same track count wins) and the Cover Art Archive (`front-500` of the release found). Year and genre are only
+  filled where the tags have none. At most one MusicBrainz request a second, with `User-Agent: HomeStart/1.0 ( contact )`.
+  Only artist, album and the number of tracks leave the server. Every picture is checked with Pillow (JPEG, PNG or
+  WebP, at least 16 px, at most 40 megapixels and 10 MB), made a JPEG of at most 600 px and kept in `cache_dir/covers`;
+  the smaller sizes are made when first asked for. `not_found` is asked again after `metadata_recheck_days`, `error`
+  after an hour. A scan that touches an album without a picture looks again. The on/off switch is kept in `app_settings`.
+- **Streaming** (`api/player_stream.py`, `services/player/files.py`): the server opens the file (`open_track_file`: the
+  path is built from the database entry only and must stay inside the location, links leading out are refused) and
+  sends it in 64 KiB parts read in a thread, with Range support. The listener is counted in `PlayerHub.acquire_stream` and
+  released when the client leaves; the user and the track are looked up with short database sessions, so no connection
+  stays open during the audio. `max_listeners` counts listeners (sessions with a stream), not connections.
+- **Sessions** (`services/player/hub.py`): `Session` holds the queue (`queue` in play order, `base` in the order added, for
+  shuffle off), index, status, shuffle and repeat; `PlayerHub` holds the sessions, the stream counts and wakes the
+  server-sent events when a session changes. Commands are applied in `api/player_stream.py`; tracks that left the
+  library are taken out of the queue whenever the state is built.
+- **Browser** (`stores/player.ts`, `components/player-bar.vue`): one store for the whole app with two `<audio>` elements.
+  The second one loads the next track `PRELOAD_SECONDS` before the end; when the track ends, the ready one is started at
+  once and the server is told (`ended`), so there is no loading between tracks. The sound goes on while other pages are open;
+  starting the player stops the radio and the other way round. A reloaded page comes back paused, with the queue.
+- Listings only show available tracks of locations that are switched on. Paths never leave the server: the library
+  API gives location names and folder paths relative to the location.
 
 ## TasmoSiz
 

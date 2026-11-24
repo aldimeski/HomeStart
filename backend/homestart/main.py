@@ -10,11 +10,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine, func, select
 
-from .api import auth, icons, links, map_tiles, openhab, radio, skoda, tasmota, users
+from .api import auth, icons, links, map_tiles, openhab, player, player_panel, player_playlists, player_stream, radio, skoda, tasmota, users
 from .config import Settings, prepare_directories
 from .db import SessionLocal, make_engine
 from .models import ROLE_ADMIN, User, UserSettings
 from .security import CSRF_HEADER, hash_password
+from .services.player.hub import PlayerHub
+from .services.player.metadata import MetadataService
+from .services.player.scanner import ScanService, mark_interrupted_scans
 from .services.radio.hub import RadioHub
 from .services.secret_box import SecretBox
 from .services.skoda.service import SkodaService
@@ -62,6 +65,7 @@ def create_app(settings: Settings) -> FastAPI:
     SessionLocal.configure(bind=engine)
     run_migrations(engine)
     ensure_initial_admin()
+    mark_interrupted_scans()
     secret_box = SecretBox.from_key_file(settings.key_file)
 
     @asynccontextmanager
@@ -70,6 +74,8 @@ def create_app(settings: Settings) -> FastAPI:
         app.state.tasmota = manager
         await manager.start()
         app.state.radio = RadioHub(settings.radio_max_listeners)
+        app.state.player = PlayerHub(settings.player_max_listeners)
+        app.state.player_metadata.start()
         if settings.openhab_url:
             app.state.openhab = openhab.make_client(settings)
         yield
@@ -86,7 +92,10 @@ def create_app(settings: Settings) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.secret_box = secret_box
     app.state.skoda = SkodaService(settings, secret_box)
+    app.state.player_metadata = MetadataService(settings, secret_box)
+    app.state.player_scans = ScanService(settings, secret_box, on_done=app.state.player_metadata.start)
 
     @app.middleware("http")
     async def csrf_and_headers(request: Request, call_next):
@@ -111,7 +120,14 @@ def create_app(settings: Settings) -> FastAPI:
 
     for module in (auth, users, links, icons, tasmota, skoda, map_tiles):
         app.include_router(module.router)
+    app.include_router(player.router)
+    app.include_router(player.admin_router)
+    app.include_router(player_playlists.router)
+    app.include_router(player_playlists.admin_router)
+    app.include_router(player_stream.router)
+    app.include_router(player_stream.stream_router)
     app.include_router(radio.admin_router)
+    app.include_router(player_panel.router)
     app.include_router(radio.panel_router)
     openhab.register(app, settings)
 

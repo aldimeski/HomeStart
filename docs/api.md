@@ -56,6 +56,110 @@ the header `X-HomeStart: 1`.
 | WS | `/ws/tasmota` | user | Live device updates: `snapshot`, `device`, `removed`, `mqtt` messages |
 | WS | `/ws/tasmota/console/{id}` | user | Device console: `hello`, `source`, `lines`, `reset`; send `{"type":"command","command":"Status 0"}` (admin only) |
 
+## Player – library (logged-in users)
+
+Only tracks that exist now, on locations that are switched on, are listed. Lists are paged with `limit` (1–200)
+and `offset`. Search (`q`) ignores case and accents and needs every word to be found.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/player/albums` | `{items: [{id, title, artist, year, genre, tracks, duration_s, has_cover}], total}`; `q`, `genre` or `no_genre=true`, `sort=title\|artist\|year` |
+| GET | `/api/player/albums/{id}` | `{album, tracks: [...]}` in disc and track order; 404 unknown |
+| GET | `/api/player/genres` | `[{name, tracks, albums}]`; `name` null = tracks without a genre; genres that differ only in case are one |
+| GET | `/api/player/tracks` | `{items: [{id, title, artist, album_id, album, track_no, disc_no, year, genre, duration_s, format, has_cover}], total}`; `q`, `genre`, `no_genre` |
+| GET | `/api/player/cover/{album_id}?size=96\|300\|600` | The album picture as a JPEG (`Cache-Control: private, no-cache`, so the browser revalidates with the ETag); 404 no picture, 400 other size |
+| GET | `/api/player/locations` | `[{id, name, tracks}]` – names only, never paths |
+| GET | `/api/player/folders?source_id=&path=` | `{source_id, source_name, path, folders: [{name, path, tracks}], tracks: [...]}`; 404 unknown location or folder |
+
+## Player – locations and scans (administrators)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/config/player/sources` | `[{id, name, kind, path, network_path, username, has_password, enabled, last_scan_at, last_scan_status, tracks, missing}]`; `kind` is `local` or `smb`; the password is never sent |
+| POST, PUT | `/api/config/player/sources[/{id}]` | `{name, kind, enabled}` plus `path` (local folder) or `network_path` (`\\server\share[\folder]`, also `//server/share/folder` and `smb://…`), `username` and `password` (SMB). On PUT a missing `password` keeps the saved one; an empty `username` means guest and drops the password; `kind` cannot change (400). 400 folder missing or not readable, or a server outside the local network; 409 name used, or the location is being scanned; 422 invalid network path |
+| POST | `/api/config/player/sources/test` | The same body (and `source_id` to use the saved password) → `{ok, message, tracks}`. Connects, reads the location and counts the music files (up to 2000); nothing is saved. Failures are `ok: false` with a plain message (wrong user or password, share or folder not found, access denied, cannot reach the server, not a local server) |
+| DELETE | `/api/config/player/sources/{id}` | Removes the location and its library entries; the files are never touched |
+| POST | `/api/config/player/sources/{id}/scan` | Starts a scan in the background → 202 `{scan_id, sources}`; 409 a scan is running, 400 location switched off |
+| POST | `/api/config/player/scan` | The same for every location that is switched on, one after the other |
+| POST | `/api/config/player/scan/cancel` | 204; 409 when no scan is running |
+| GET | `/api/config/player/status` | `{scanning, scan_id}` |
+| GET | `/api/config/player/sources/{id}/scans?limit=` | Latest scans: `{id, started_at, finished_at, started_by, status, added, changed, removed, errors, error_message}` |
+| GET | `/api/config/player/scans/{id}` | The same plus `added_files`, `changed_files`, `removed_files`, `new_folders`, `removed_folders`, `error_list` (at most 5000 entries per list; the counts are exact) |
+| GET, PUT | `/api/config/player/metadata` | `{online_enabled, contact_set, running, pending, albums, with_cover, found, not_found, errors}`; PUT `{online_enabled}` switches the online lookup (kept in the database; the ini value is the default) |
+| POST | `/api/config/player/metadata/run` | Starts the lookup of the albums that wait for a picture or online data (202, same body as GET) |
+| POST | `/api/config/player/metadata/retry` | Marks the albums that were not found or failed as waiting again, and starts (202) |
+| POST | `/api/config/player/albums/{id}/refresh` | Forgets the picture and online data of one album and looks again (202); 404 unknown |
+| POST | `/api/config/player/sources/{id}/remove-missing` | `{removed}` – deletes the files that disappeared from the library for good |
+
+## Player – audio and listening session (logged-in users)
+
+The listening session (queue, shuffle, repeat, state) lives in the server's memory, one per user and `client_id`
+(8–64 letters, digits, `-`, `_`; the browser makes one and keeps it). A restart of HomeStart empties the queues.
+
+| Method | Path | Description |
+|---|---|---|
+| GET, HEAD | `/player/stream/{track_id}?sid={client_id}` | The file as it is (no transcoding). `Content-Type` by format, `Content-Length`, `Accept-Ranges: bytes`. A single `Range` is answered with 206 (`bytes=a-b`, `a-`, `-n`); 416 when it is outside the file; several ranges are ignored (200). 404 unknown, disabled or missing track, 502 the file cannot be read (also a link leading out of the location), 503 `[player] max_listeners` reached. A listener counts once however many streams it has open (the track playing and the one loaded ahead) |
+| GET | `/api/player/session?client_id=` | The state: `{status, index, shuffle, repeat, version, current_id, next_id, queue: [track...]}`; `status` is `stopped`, `playing` or `paused`; `next_id` is the track playback reaches next (null at the end, or on repeat one) |
+| POST | `/api/player/session/command` | `{client_id, action, ...}` answered with the new state. See below |
+| GET | `/api/player/session/events?client_id=` | The state as server-sent events: one at once, then one for every change; a comment line every 15 s |
+
+Actions: `play`, `enqueue` and `play_next` take what to play – `track_id`, `track_ids` (up to 500, order kept),
+`album_id`, `source_id` with `path` (the folder and everything below it), or `playlist_id` (its tracks that can be played now) – and `play` also `start_track_id` (start
+there) and `shuffle` (switches shuffle on or off first); `enqueue` and `play_next` on an empty queue start playing.
+`pause`, `resume`, `stop` (the queue stays), `next`, `prev`, `jump` (`index`), `shuffle` (`on`), `repeat`
+(`mode`: `off`, `all`, `one`), `clear`. The browser reports `ended` when a track finishes (the server moves on; at the end
+of the queue playback stops, or starts again with repeat all) and `error` when a track cannot be played (the server skips
+it; after three in a row playback stops). 400 for a missing argument, 404 when nothing playable was named.
+
+## Player – playlists (logged-in users)
+
+A user's playlists are private; a *panel playlist* (`panel: true`, no owner) is seen and played by everybody and changed by
+administrators only. Another user's playlist answers 404. An entry is a track in a playlist; the same track may be there twice.
+An entry whose file is missing, or whose location is switched off, stays (`available: false`) and is skipped when played; when
+the track is removed from the library the entry goes too. At most 100 playlists per user and 2000 entries per playlist (409).
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/player/playlists` | `[{id, name, panel, editable, tracks, playable, duration_s}]`: own first, then panel playlists |
+| POST | `/api/player/playlists` | `{name, panel?}` → 201; `panel: true` is for administrators (403) |
+| GET | `/api/player/playlists/{id}` | `{playlist, tracks: [track + entry_id, available]}` in list order |
+| PUT, DELETE | `/api/player/playlists/{id}` | Rename (`{name}`) or delete; 403 for a panel playlist of a non-administrator. Deleting a panel playlist also takes it off the openpanel suggestions |
+| POST | `/api/player/playlists/{id}/tracks` | Adds at the end what the body names (`track_id`, `track_ids`, `album_id`, `source_id` + `path`, `playlist_id`); answers the playlist; 404 nothing to add, 409 too big |
+| DELETE | `/api/player/playlists/{id}/tracks/{entry_id}` | Removes one entry; answers the playlist |
+| PUT | `/api/player/playlists/{id}/order` | `{entry_ids: [...]}` – every entry exactly once (400); answers the playlist |
+| GET | `/api/player/panel` | What the openpanel offers: `{favorites, suggestions, playlists}`; items `{id, section, kind, ref, title, name, available, sort_order}` |
+
+## Player – the openpanel content (administrators)
+
+*Favourites* are tracks; *suggestions* are albums, folders or panel playlists. `ref` is the id (for a folder
+`"<location id>:<folder path>"`). An item that is gone or cannot be played is kept, with `available: false`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/config/player/panel` | The same as `GET /api/player/panel` |
+| POST | `/api/config/player/panel/items` | `{section: favorites\|suggestions, kind: track\|album\|folder\|playlist, ref, title?}` → 201; 400 wrong kind for the section or unknown location, 404 unknown item or not a panel playlist, 409 already there |
+| PUT, DELETE | `/api/config/player/panel/items/{id}` | Set the title (`{title}`, empty = the name) or take the item off |
+| PUT | `/api/config/player/panel/{favorites\|suggestions}/order` | `{ids: [...]}` – every item of the section exactly once |
+
+## Player on the openpanel (open to the local network)
+
+Same access rule as the Radiopanel below (`[radio] allowed_networks`, loopback, or a logged-in user; `X-Forwarded-For` is
+ignored). The tablet is a listener of its own: its session is the `client_id` it makes up, independent of any user and of the
+sessions of the app. Everything here shows only the file types of `[player] openpanel_formats` (default mp3, m4a, aac): a FLAC
+or OGG track does not exist for the tablet (404 on the stream, absent from lists, marked `available: false` in a playlist).
+Requests other than GET and HEAD must carry the header `X-HomeStart: 1` (403 without), so a page of another site cannot steer a
+tablet. Paths and addresses of locations are never given.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/openpanel/player/albums`, `/albums/{id}`, `/genres`, `/tracks`, `/locations`, `/folders`, `/cover/{album_id}` | The library, exactly as under `/api/player/` |
+| GET | `/openpanel/player/content` | `{favorites, suggestions, playlists}` set by the administrator; every item has a `selector` – what to give the player to play it (`{track_id}`, `{album_id}`, `{source_id, path}` or `{playlist_id}`) |
+| GET | `/openpanel/player/playlists`, `/playlists/{id}` | The panel playlists only; a user's own playlist is 404 |
+| GET | `/openpanel/player/session?client_id=` | The state of the tablet's session (as under `/api/player/session`) |
+| POST | `/openpanel/player/session/command` | The same commands; `playlist_id` can only be a panel playlist |
+| GET, HEAD | `/openpanel/player/stream/{track_id}?sid={client_id}` | The track, with Range, as under `/player/stream/`; counts as a listener against `[player] max_listeners` |
+| GET | `/openpanel/music.js` | The script of the Music tab (the page is `/openpanel/`) |
+
 ## Radiopanel (open to the local network)
 
 These need no session when the client is in `[radio] allowed_networks` (or loopback); otherwise a logged-in user

@@ -11,6 +11,7 @@ import {
   mdiFlashOutline,
   mdiLinkVariant,
   mdiLogout,
+  mdiMusic,
   mdiOpenInNew,
   mdiRadio,
   mdiWeatherNight,
@@ -36,6 +37,7 @@ const modules = [
   { to: '/tasmosiz', label: 'TasmoSiz', icon: mdiFlashOutline },
   { to: '/skoda', label: 'Škoda', icon: mdiCarOutline },
   { to: '/radiopanel', label: 'Radiopanel', icon: mdiRadio },
+  { to: '/player', label: 'Player', icon: mdiMusic },
 ]
 
 function itemClass(active: boolean) {

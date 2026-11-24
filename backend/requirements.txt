@@ -9,3 +9,6 @@ httpx==0.28.1
 aiomqtt==2.5.1
 cryptography==50.0.2
 myskoda==2.17.2
+mutagen==1.48.1
+smbprotocol==1.17.0
+pillow==13.0.0

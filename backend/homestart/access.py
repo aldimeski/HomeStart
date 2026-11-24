@@ -33,3 +33,13 @@ def require_local_or_user(request: Request) -> None:
             user_for_token(db, settings, current_session_token(request))
         except HTTPException:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only available from the local network") from None
+
+
+def logged_in_user_id(request: Request) -> int:
+    """The id of the logged-in user, without keeping a database connection open for the rest of the request.
+
+    For endpoints that stream for a long time.
+    """
+    settings: Settings = request.app.state.settings
+    with SessionLocal() as db:
+        return user_for_token(db, settings, current_session_token(request)).id

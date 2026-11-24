@@ -260,3 +260,186 @@ export interface PanelStations {
 export interface PanelStatus {
   stations: { id: string; name: string; listeners: number; title: string | null }[]
 }
+
+export interface MusicSource {
+  id: number
+  name: string
+  kind: 'local' | 'smb'
+  path: string | null
+  network_path: string | null
+  username: string | null
+  has_password: boolean
+  enabled: boolean
+  last_scan_at: string | null
+  last_scan_status: ScanStatus | null
+  tracks: number
+  missing: number
+}
+
+export interface MusicSourceInput {
+  name: string
+  kind: 'local' | 'smb'
+  path?: string | null
+  network_path?: string | null
+  username?: string | null
+  /** Left out when editing = the saved password stays. Never sent back by the server. */
+  password?: string | null
+  enabled: boolean
+}
+
+export interface MusicSourceTest {
+  ok: boolean
+  message: string
+  tracks: number | null
+}
+
+export type ScanStatus = 'running' | 'done' | 'failed' | 'cancelled'
+
+export interface MusicScan {
+  id: number
+  source_id: number
+  started_at: string
+  finished_at: string | null
+  /** null when the schedule started it. */
+  started_by: string | null
+  status: ScanStatus
+  added: number
+  changed: number
+  removed: number
+  errors: number
+  error_message: string | null
+}
+
+export interface MusicScanDetail extends MusicScan {
+  added_files: string[]
+  changed_files: string[]
+  removed_files: string[]
+  new_folders: string[]
+  removed_folders: string[]
+  error_list: string[]
+}
+
+export interface Track {
+  id: number
+  title: string
+  artist: string
+  album_id: number | null
+  album: string | null
+  track_no: number | null
+  disc_no: number | null
+  year: number | null
+  genre: string | null
+  duration_s: number | null
+  format: string
+  has_cover: boolean
+}
+
+export interface Album {
+  id: number
+  title: string
+  artist: string
+  year: number | null
+  genre: string | null
+  tracks: number
+  duration_s: number
+  has_cover: boolean
+}
+
+export interface Page<T> {
+  items: T[]
+  total: number
+}
+
+export interface Genre {
+  /** null = tracks without a genre. */
+  name: string | null
+  tracks: number
+  albums: number
+}
+
+export interface MusicLocation {
+  id: number
+  name: string
+  tracks: number
+}
+
+export interface FolderListing {
+  source_id: number
+  source_name: string
+  path: string
+  folders: { name: string; path: string; tracks: number }[]
+  tracks: Track[]
+}
+
+export interface PlayerState {
+  status: 'stopped' | 'playing' | 'paused'
+  index: number
+  shuffle: boolean
+  repeat: 'off' | 'all' | 'one'
+  version: number
+  current_id: number | null
+  next_id: number | null
+  queue: Track[]
+}
+
+/** What to play or add: a track, several, an album, or a folder with everything below it. */
+export type PlaySelection =
+  | { track_id: number }
+  | { track_ids: number[] }
+  | { album_id: number }
+  | { source_id: number; path: string }
+  | { playlist_id: number }
+
+export interface MetadataStatus {
+  online_enabled: boolean
+  contact_set: boolean
+  running: boolean
+  /** Albums still waiting for a picture or an online lookup. */
+  pending: number
+  albums: number
+  with_cover: number
+  found: number
+  not_found: number
+  errors: number
+}
+
+export interface Playlist {
+  id: number
+  name: string
+  /** Made by an administrator for the openpanel; everybody can play it. */
+  panel: boolean
+  editable: boolean
+  tracks: number
+  /** Entries that can be played now. */
+  playable: number
+  duration_s: number
+}
+
+export interface PlaylistEntry extends Track {
+  entry_id: number
+  available: boolean
+}
+
+export interface PlaylistDetail {
+  playlist: Playlist
+  tracks: PlaylistEntry[]
+}
+
+export type PanelKind = 'track' | 'album' | 'folder' | 'playlist'
+
+export interface PanelItem {
+  id: number
+  section: 'favorites' | 'suggestions'
+  kind: PanelKind
+  ref: string
+  title: string | null
+  name: string
+  available: boolean
+  sort_order: number
+}
+
+export interface PanelContent {
+  favorites: PanelItem[]
+  suggestions: PanelItem[]
+  playlists: Playlist[]
+}

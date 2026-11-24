@@ -68,6 +68,27 @@ openhab_paths = /basicui, /icon, /rest, /chart, /proxy, /static, /images
 # Switch off only for an openHAB with a self-signed certificate.
 openhab_verify_tls = true
 
+[player]
+# Music file types the library scan picks up (comma separated, without the dot).
+formats = mp3, m4a, aac, ogg, flac
+# File types the openpanel offers. Safari on an old iPad cannot play FLAC or OGG.
+openpanel_formats = mp3, m4a, aac
+# Most listeners streaming at the same time (the radio has its own limit).
+max_listeners = 3
+# Looks up albums online (MusicBrainz for year and genre, Cover Art Archive for pictures). Only artist and album names
+# and the number of tracks are sent. Can also be switched in Configuration → Player.
+metadata_online = true
+# MusicBrainz asks for contact details in the requests, such as an address of the administrator.
+musicbrainz_contact =
+# Days before an album that was not found online is looked up again.
+metadata_recheck_days = 30
+# Seconds to wait for a network share before a scan or a stream gives up.
+smb_timeout_seconds = 15
+# Days a file that disappeared from its location stays in the library (playlists keep their entries) before it is removed.
+missing_keep_days = 30
+# Older ID3 tags are often Windows-1250 or Latin-1 instead of UTF-8; this is tried when the text is not valid UTF-8.
+legacy_encoding = cp1250
+
 [backup]
 # Database copies made by "python -m homestart.backup" (homestart-backup.timer runs it daily).
 dir = data/backups
@@ -110,6 +131,15 @@ class Settings:
     openhab_start: str
     openhab_paths: tuple[str, ...]
     openhab_verify_tls: bool
+    player_formats: tuple[str, ...]
+    player_max_listeners: int
+    player_panel_formats: tuple[str, ...]
+    player_smb_timeout: int
+    player_metadata_online: bool
+    player_musicbrainz_contact: str
+    player_metadata_recheck_days: int
+    player_missing_keep_days: int
+    player_legacy_encoding: str
 
 
 def default_app_dir() -> Path:
@@ -215,6 +245,31 @@ def load_settings(app_dir: Path | None = None) -> Settings:
     except ValueError as exc:
         raise ConfigError(f"{ini_file}: [radio] openhab_verify_tls must be true or false") from exc
 
+    player_formats = tuple(
+        part.strip().lower().lstrip(".")
+        for part in parser.get("player", "formats", fallback="mp3, m4a, aac, ogg, flac").split(",")
+        if part.strip()
+    )
+    if not player_formats:
+        raise ConfigError(f"{ini_file}: [player] formats must list at least one file type")
+    panel_formats = tuple(
+        part.strip().lower().lstrip(".")
+        for part in parser.get("player", "openpanel_formats", fallback="mp3, m4a, aac").split(",")
+        if part.strip()
+    )
+    if not panel_formats:
+        raise ConfigError(f"{ini_file}: [player] openpanel_formats must list at least one file type")
+    legacy_encoding = parser.get("player", "legacy_encoding", fallback="cp1250").strip() or "cp1250"
+    try:
+        "".encode(legacy_encoding)
+    except LookupError as exc:
+        raise ConfigError(f"{ini_file}: [player] legacy_encoding is not a known encoding") from exc
+
+    try:
+        metadata_online = parser.getboolean("player", "metadata_online", fallback=True)
+    except ValueError as exc:
+        raise ConfigError(f"{ini_file}: [player] metadata_online must be true or false") from exc
+
     settings = Settings(
         app_dir=app_dir,
         ini_file=ini_file,
@@ -242,6 +297,15 @@ def load_settings(app_dir: Path | None = None) -> Settings:
         openhab_start=openhab_start,
         openhab_paths=openhab_paths,
         openhab_verify_tls=openhab_verify_tls,
+        player_formats=player_formats,
+        player_max_listeners=_get_int(parser, "player", "max_listeners", 3, ini_file),
+        player_panel_formats=panel_formats,
+        player_smb_timeout=_get_int(parser, "player", "smb_timeout_seconds", 15, ini_file),
+        player_metadata_online=metadata_online,
+        player_musicbrainz_contact=" ".join(parser.get("player", "musicbrainz_contact", fallback="").split()),
+        player_metadata_recheck_days=_get_int(parser, "player", "metadata_recheck_days", 30, ini_file),
+        player_missing_keep_days=_get_int(parser, "player", "missing_keep_days", 30, ini_file),
+        player_legacy_encoding=legacy_encoding,
     )
     log.info("Loaded settings from %s", ini_file)
     log.info("Database file: %s", settings.db_file)

@@ -284,7 +284,7 @@ def test_panel_is_closed_outside_the_local_network(tmp_path):
             assert inside.get(path).status_code == 200, path
         assert outside.get("/openpanel/radio/no-such-station").status_code == 403
         assert inside.get("/openpanel/radio/no-such-station").status_code == 404
-        assert "Radio panel" in inside.get("/openpanel/").text
+        assert "<title>Panel</title>" in inside.get("/openpanel/").text
         assert inside.get("/openpanel/panel.js").status_code == 200
         assert inside.get("/openpanel/secret.py").status_code == 404
 

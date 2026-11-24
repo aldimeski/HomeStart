@@ -121,6 +121,63 @@ Home Screen. At most 3 people can listen at the same time; a fourth gets an erro
 Administrators manage the stations under **Configuration → Radio**: name, subtitle, an id (used in the
 address), one or more stream addresses (tried in order) and, only if needed, a content type.
 
+## Player – music
+
+*Player* in the menu is the music library. Everything is read from the locations an administrator has added; HomeStart
+never changes or deletes music files. 
+- **Play** buttons are on every track, album, folder and subfolder. *Play album* and *Play folder* (with everything below
+  it) start from the first track; the play button of a track starts there and goes on through the album or folder.
+  *Shuffle* plays them in random order, *Add to queue* puts them after what is already queued.
+- The **player bar** at the bottom stays while you use other pages: previous, play/pause, stop, next, a position slider
+  (click or drag to jump inside a track), shuffle, repeat (all / one), volume and the **queue** (click a track to jump to it,
+  *Clear* to empty it). "Previous" restarts a track that has played for more than 3 seconds.
+- Tracks follow each other without a pause. Starting the player stops the radio. After a page reload the queue is still there
+  but paused. Only a few people can listen at the same time (`max_listeners` in `homestart.ini`).
+
+- **Albums**: all albums, sorted by title, artist or year; open one to see its tracks.
+- **Genres**: genres with the number of albums and tracks; open one to see its albums.
+- **Folders**: browse like in a file manager – location, folder, subfolder, tracks.
+- **Pictures**: albums show their cover (from the music files, from a picture in the folder such as `cover.jpg`, or from
+  the Cover Art Archive) in the lists, on the album page and in the player bar. Administrators can ask for a new lookup of
+  one album on its page.
+- **Playlists** (tab): make your own from any tracks. *Add to playlist* is on every track, album and folder (and *Save as
+  playlist* in the queue); inside a playlist you can reorder, remove, rename and delete, and play it, shuffle it or add it
+  to the queue. A playlist is private to you. *Panel playlists* are made by an administrator, shown to everybody and
+  also offered on the openpanel; others can play but not change them. A track whose file has gone stays on the list, greyed,
+  and is skipped.
+- **Search** (top right): title, artist or album, without caring about capitals or accents.
+
+### For administrators
+
+*Configuration → Player* lists the music locations. Add a folder of the server (full path, e.g. `/srv/music`) or a
+**network share**: choose *Network share (SMB)*, enter the path like `\\192.168.1.20\Music\Albums` (server, share, optional
+folder), the user name and the password (empty user name = guest), and press *Test connection* to see whether it works
+and how many music files it finds. The password is stored encrypted and never shown again; when you edit the location,
+leave the password empty to keep it. Only servers of the local network are allowed. Then *Scan again*. A scan runs in the background; when it is over, *Report* shows what is new, changed or removed
+since the last scan, including new and removed folders. Scan again whenever files have been added or deleted.
+Files that disappeared stay in the library as "missing" for 30 days; *remove from library* clears them at once.
+**Openpanel content.** The openpanel (no login) offers the whole library and, on top, what you choose: *panel playlists*
+(tick *A panel playlist* when making one), *favourite tracks* (the star on a track) and *suggestions* (*Offer on the openpanel*
+on an album, a folder or a panel playlist). *Configuration → Player → Openpanel content* lists favourites and suggestions
+for reordering, retitling and removing.
+
+*Album pictures and details* (further down on the same page) shows how many albums have a picture and lets you switch the online
+lookup on or off. With it on, albums are searched on MusicBrainz (year, genre) and the Cover Art Archive (picture) in the background;
+only the artist and album names and the number of tracks are sent. Set `musicbrainz_contact` in `homestart.ini`, as MusicBrainz asks
+for contact details. *Look up now* and *Try again for those not found* start a lookup at once.
+
+A location that cannot be reached (an unmounted disk, a switched-off NAS, a wrong password) never removes anything. Switching a location off
+hides its music from listeners.
+
+### The openpanel – music on a tablet
+
+`/openpanel` (the address of the Radiopanel) has a **Music** tab, with no login, from the networks allowed for the radio.
+Every tablet has its own queue. **Home** shows what an administrator offers: *Favourites*, *Suggestions* and the *Playlists*; tap a
+line to open it, tap *Play* to play it at once. *Albums*, *Genres* and *Folders* browse the whole library, and the search box
+finds tracks by title, artist or album. At the bottom: previous, play/pause, stop, next, shuffle, repeat and a position slider
+(touch to jump inside a track). Tracks follow each other without a pause. Only MP3 and M4A/AAC are shown, since an old iPad
+cannot play FLAC or OGG (`openpanel_formats` in `homestart.ini`). Starting the radio pauses the music and the other way round.
+
 ## Configuration
 
 - **Links** (administrators): add, edit, delete and reorder ShoLink links; choose an icon from the library,

@@ -4,8 +4,10 @@ import { useRoute } from 'vue-router'
 import { mdiMenu } from '@mdi/js'
 import SideMenu from '../components/side-menu.vue'
 import MdiIcon from '../components/mdi-icon.vue'
+import PlayerBar from '../components/player-bar.vue'
 import { session } from '../stores/session'
 import { links } from '../stores/links'
+import { player } from '../stores/player'
 
 const route = useRoute()
 const phoneQuery = window.matchMedia('(max-width: 767px)')
@@ -25,11 +27,13 @@ onMounted(() => {
   phoneQuery.addEventListener('change', onMediaChange)
   window.addEventListener('keydown', onKeydown)
   if (!links.state.loaded) links.load().catch(() => {})
+  player.init()
 })
 
 onBeforeUnmount(() => {
   phoneQuery.removeEventListener('change', onMediaChange)
   window.removeEventListener('keydown', onKeydown)
+  player.dispose()
 })
 
 watch(() => route.fullPath, () => (drawerOpen.value = false))
@@ -73,6 +77,7 @@ watch(() => route.fullPath, () => (drawerOpen.value = false))
       <main class="min-h-0 flex-1 overflow-hidden">
         <RouterView />
       </main>
+      <PlayerBar />
     </div>
   </div>
 </template>

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Radio panel">
-  <title>Radio panel</title>
+  <meta name="apple-mobile-web-app-title" content="Panel">
+  <title>Panel</title>
   <link rel="stylesheet" href="/openpanel/panel.css">
 </head>
 <body>
@@ -13,6 +13,7 @@
   <div id="app">
     <header id="tabs">
       <button type="button" id="tab-radio" class="tab active">Radio</button>
+      <button type="button" id="tab-music" class="tab">Music</button>
       <button type="button" id="tab-home" class="tab" style="display:none">Home</button>
     </header>
 
@@ -28,6 +29,37 @@
       <ul id="stations"></ul>
     </section>
 
+    <section id="view-music" class="view" style="display:none">
+      <div id="music-nav">
+        <button type="button" id="music-home" class="sub-tab active">Home</button>
+        <button type="button" id="music-albums" class="sub-tab">Albums</button>
+        <button type="button" id="music-genres" class="sub-tab">Genres</button>
+        <button type="button" id="music-folders" class="sub-tab">Folders</button>
+        <input type="search" id="music-search" placeholder="Search" autocomplete="off" autocorrect="off" autocapitalize="off">
+      </div>
+      <div id="music-msg" class="msg" style="display:none"></div>
+      <div id="music-body"></div>
+      <div id="music-bar" style="display:none">
+        <div id="music-cover"></div>
+        <div id="music-info">
+          <div id="music-title"></div>
+          <div id="music-artist"></div>
+        </div>
+        <div id="music-seekrow">
+          <input type="range" id="music-seek" min="0" max="1" value="0" step="1">
+          <span id="music-time">0:00 / 0:00</span>
+        </div>
+        <div id="music-controls">
+          <button type="button" id="music-prev" class="ctl">Prev</button>
+          <button type="button" id="music-play" class="ctl main">Play</button>
+          <button type="button" id="music-stop" class="ctl">Stop</button>
+          <button type="button" id="music-next" class="ctl">Next</button>
+          <button type="button" id="music-shuffle" class="ctl">Shuffle</button>
+          <button type="button" id="music-repeat" class="ctl">Repeat</button>
+        </div>
+      </div>
+    </section>
+
     <section id="view-home" class="view" style="display:none">
       <div id="home-bar">
         <button type="button" id="home-reload">Reload</button>
@@ -39,6 +71,10 @@
 
   <!-- Outside the tabs, so the sound does not stop when the Home tab is opened. -->
   <audio id="player" preload="none"></audio>
+  <!-- Two players for the music, so the next track is ready when the current one ends. -->
+  <audio id="music-a" preload="none"></audio>
+  <audio id="music-b" preload="none"></audio>
   <script src="/openpanel/panel.js"></script>
+  <script src="/openpanel/music.js"></script>
 </body>
 </html>

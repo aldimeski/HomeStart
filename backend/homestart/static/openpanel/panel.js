@@ -9,6 +9,8 @@
   var stopButton = document.getElementById('stop');
   var tabRadio = document.getElementById('tab-radio');
   var tabHome = document.getElementById('tab-home');
+  var tabMusic = document.getElementById('tab-music');
+  var viewMusic = document.getElementById('view-music');
   var viewRadio = document.getElementById('view-radio');
   var viewHome = document.getElementById('view-home');
   var frame = document.getElementById('home-frame');
@@ -16,6 +18,9 @@
   var stations = [];
   var current = null;
   var statusTimer = null;
+  // Lets the music (music.js) and the radio stop each other: only one thing plays at a time.
+  var hooks = { stopRadio: null, onRadioStart: null };
+  window.HomeStartPanel = hooks;
 
   function getJson(url, done) {
     var xhr = new XMLHttpRequest();
@@ -63,6 +68,7 @@
   }
 
   function play(station) {
+    if (hooks.onRadioStart) hooks.onRadioStart();
     current = station;
     setText(nowStation, station.name);
     setText(nowTitle, '');
@@ -123,12 +129,16 @@
 
   function showTab(name) {
     var home = name === 'home';
-    viewRadio.style.display = home ? 'none' : '';
+    var music = name === 'music';
+    viewRadio.style.display = name === 'radio' ? '' : 'none';
+    viewMusic.style.display = music ? '' : 'none';
     viewHome.style.display = home ? '' : 'none';
-    tabRadio.className = 'tab' + (home ? '' : ' active');
+    tabRadio.className = 'tab' + (name === 'radio' ? ' active' : '');
+    tabMusic.className = 'tab' + (music ? ' active' : '');
     tabHome.className = 'tab' + (home ? ' active' : '');
     // Loaded on the first visit, not at start-up.
     if (home && !frame.getAttribute('src')) frame.src = homeStart;
+    if (music && window.HomeStartMusic) window.HomeStartMusic.start();
   }
 
   player.addEventListener('playing', function () { if (current) setStatus('Playing live', false); });
@@ -139,8 +149,10 @@
     setStatus('Cannot play this station (error code ' + code + ')', true);
   });
 
+  hooks.stopRadio = function () { if (current) stop(); };
   stopButton.onclick = stop;
   tabRadio.onclick = function () { showTab('radio'); };
+  tabMusic.onclick = function () { showTab('music'); };
   tabHome.onclick = function () { showTab('home'); };
   document.getElementById('home-reload').onclick = function () { frame.src = homeStart; };
 

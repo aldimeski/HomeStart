@@ -13,6 +13,7 @@ const tabs = computed(() => [
         { to: '/config/users', label: 'Users' },
         { to: '/config/devices', label: 'Devices' },
         { to: '/config/radio', label: 'Radio' },
+        { to: '/config/player', label: 'Player' },
       ]
     : []),
   { to: '/config/account', label: 'My account' },

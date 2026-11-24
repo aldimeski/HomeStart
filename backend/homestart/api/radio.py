@@ -23,6 +23,7 @@ PANEL_DIR = Path(__file__).resolve().parents[1] / "static" / "openpanel"
 # Only these files are served from the panel folder.
 PANEL_FILES = {
     "panel.js": "application/javascript",
+    "music.js": "application/javascript",
     "panel.css": "text/css",
 }
 STREAM_HEADERS = {
